@@ -11,7 +11,7 @@ using this structured data, we can compare it against the structured job require
 class Skill(BaseModel):
     name: str
     category: str = Field(description="e.g. 'programming', 'data', 'soft_skill'")
-    proficiency: str = Field(description="'beginner', 'intermediate', or 'advanced'")
+    proficiency: str = Field(default="intermediate", description="'beginner', 'intermediate', or 'advanced'")
 
 class Experience(BaseModel):
     title: str

@@ -3,6 +3,7 @@
 import streamlit as st
 from src.models.analysis import FullAnalysis
 from ui.components import render_score_cards, render_skill_chips, render_result_box
+from src.utils.pdf import create_resume_pdf, create_cover_letter_pdf
 
 
 def render_results(result: FullAnalysis) -> None:
@@ -45,22 +46,42 @@ def _render_fit_tab(result: FullAnalysis) -> None:
 
 def _render_resume_tab(result: FullAnalysis) -> None:
     render_result_box(result.optimized_resume)
-    st.download_button(
-        "⬇️ Download Resume",
-        data=result.optimized_resume,
-        file_name="optimized_resume.txt",
-        mime="text/plain",
-    )
+    try:
+        pdf_bytes = create_resume_pdf(result.optimized_resume, name="Optimized Resume")
+        st.download_button(
+            "⬇️ Download Resume PDF",
+            data=pdf_bytes,
+            file_name="optimized_resume.pdf",
+            mime="application/pdf",
+        )
+    except Exception as e:
+        st.error(f"Error generating PDF: {e}")
+        st.download_button(
+            "⬇️ Download Resume (Text)",
+            data=result.optimized_resume,
+            file_name="optimized_resume.txt",
+            mime="text/plain",
+        )
 
 
 def _render_cover_letter_tab(result: FullAnalysis) -> None:
     render_result_box(result.cover_letter)
-    st.download_button(
-        "⬇️ Download Cover Letter",
-        data=result.cover_letter,
-        file_name="cover_letter.txt",
-        mime="text/plain",
-    )
+    try:
+        pdf_bytes = create_cover_letter_pdf(result.cover_letter, name="Cover Letter")
+        st.download_button(
+            "⬇️ Download Cover Letter PDF",
+            data=pdf_bytes,
+            file_name="cover_letter.pdf",
+            mime="application/pdf",
+        )
+    except Exception as e:
+        st.error(f"Error generating PDF: {e}")
+        st.download_button(
+            "⬇️ Download Cover Letter (Text)",
+            data=result.cover_letter,
+            file_name="cover_letter.txt",
+            mime="text/plain",
+        )
 
 
 def _render_roadmap_tab(result: FullAnalysis) -> None:
