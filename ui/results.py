@@ -4,7 +4,10 @@ import streamlit as st
 import re
 from src.models.analysis import FullAnalysis
 from ui.components import render_score_cards, render_skill_chips, render_result_box
-from src.utils.pdf import create_resume_pdf, create_cover_letter_pdf
+from src.utils.pdf import (
+    create_resume_pdf, create_cover_letter_pdf,
+    create_resume_docx, create_cover_letter_docx,
+)
 
 
 def render_results(result: FullAnalysis) -> None:
@@ -47,51 +50,68 @@ def _render_fit_tab(result: FullAnalysis) -> None:
 
 def _render_resume_tab(result: FullAnalysis) -> None:
     render_result_box(result.optimized_resume)
-    try:
-        # Extract candidate name from optimized resume for filename
-        candidate_name = "resume"
-        for line in result.optimized_resume.split('\n'):
-            if line.strip().startswith('# '):
-                candidate_name = line.strip()[2:].strip()
-                # Clean the name for filename (remove spaces and special chars)
-                candidate_name = re.sub(r'[^\w\s-]', '', candidate_name).strip().replace(' ', '_')
-                break
-        
-        pdf_bytes = create_resume_pdf(result.optimized_resume, filename_title="Optimized Resume")
-        st.download_button(
-            "⬇️ Download Resume PDF",
-            data=pdf_bytes,
-            file_name=f"{candidate_name}_resume.pdf",
-            mime="application/pdf",
-        )
-    except Exception as e:
-        st.error(f"Error generating PDF: {e}")
-        st.download_button(
-            "⬇️ Download Resume (Text)",
-            data=result.optimized_resume,
-            file_name="optimized_resume.txt",
-            mime="text/plain",
-        )
+
+    candidate_name = "resume"
+    for line in result.optimized_resume.split('\n'):
+        if line.strip().startswith('# '):
+            candidate_name = re.sub(r'[^\w\s-]', '', line.strip()[2:].strip()).strip().replace(' ', '_')
+            break
+
+    col1, col2 = st.columns(2)
+    with col1:
+        try:
+            pdf_bytes = create_resume_pdf(result.optimized_resume, filename_title="Optimized Resume")
+            st.download_button(
+                "⬇️ Download as PDF",
+                data=pdf_bytes,
+                file_name=f"{candidate_name}_resume.pdf",
+                mime="application/pdf",
+                key="resume_pdf",
+            )
+        except Exception as e:
+            st.error(f"PDF error: {e}")
+    with col2:
+        try:
+            docx_bytes = create_resume_docx(result.optimized_resume)
+            st.download_button(
+                "⬇️ Download as Word",
+                data=docx_bytes,
+                file_name=f"{candidate_name}_resume.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="resume_docx",
+            )
+        except Exception as e:
+            st.error(f"Word error: {e}")
 
 
 def _render_cover_letter_tab(result: FullAnalysis) -> None:
     render_result_box(result.cover_letter)
-    try:
-        pdf_bytes = create_cover_letter_pdf(result.cover_letter, name="Cover Letter")
-        st.download_button(
-            "⬇️ Download Cover Letter PDF",
-            data=pdf_bytes,
-            file_name="cover_letter.pdf",
-            mime="application/pdf",
-        )
-    except Exception as e:
-        st.error(f"Error generating PDF: {e}")
-        st.download_button(
-            "⬇️ Download Cover Letter (Text)",
-            data=result.cover_letter,
-            file_name="cover_letter.txt",
-            mime="text/plain",
-        )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        try:
+            pdf_bytes = create_cover_letter_pdf(result.cover_letter, name="Cover Letter")
+            st.download_button(
+                "⬇️ Download as PDF",
+                data=pdf_bytes,
+                file_name="cover_letter.pdf",
+                mime="application/pdf",
+                key="cl_pdf",
+            )
+        except Exception as e:
+            st.error(f"PDF error: {e}")
+    with col2:
+        try:
+            docx_bytes = create_cover_letter_docx(result.cover_letter)
+            st.download_button(
+                "⬇️ Download as Word",
+                data=docx_bytes,
+                file_name="cover_letter.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="cl_docx",
+            )
+        except Exception as e:
+            st.error(f"Word error: {e}")
 
 
 def _render_roadmap_tab(result: FullAnalysis) -> None:

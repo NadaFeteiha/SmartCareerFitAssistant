@@ -44,13 +44,14 @@ Return ONLY a JSON object with exactly these fields:
     "experience_alignment": 25,
     "keyword_coverage": 20,
     "strengths": ["strength 1", "strength 2"],
-    "explanation": "One sentence explaining the overall score."
+    "explanation": "A detailed 2-3 sentence breakdown explaining exactly why the score was given, what specific experience/skills are missing, and the primary reasons the score wasn't higher."
 }
 
 Rules:
 - overall must equal skill_match + experience_alignment + keyword_coverage
 - skill_match is 0-40, experience_alignment is 0-30, keyword_coverage is 0-30
 - strengths is a list of strings
+- explanation MUST clearly state the specific missing factors and why a higher score was not achieved
 - No markdown, no wrapper keys, just the JSON object""",
 )
 
