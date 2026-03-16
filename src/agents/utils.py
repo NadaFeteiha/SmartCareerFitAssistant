@@ -57,6 +57,10 @@ def unwrap_llm_json(raw: str) -> str:
             clean = clean[4:]
         clean = clean.strip()
 
+    # Step 1b: remove control characters that make JSON invalid
+    # Keep \t (0x09), \n (0x0A), \r (0x0D) — strip everything else in 0x00-0x1F
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", clean)
+
     # Step 2: try to parse as-is first to avoid corrupting valid JSON
     # (e.g. _repair_json's single-quote regex mangles apostrophes in strings)
     def _try_parse(text: str):

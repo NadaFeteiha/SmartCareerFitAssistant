@@ -82,10 +82,12 @@ if run:
         st.write("⏳ Step 3/3 — Generating optimized resume and cover letter...")
         try:
             result = run_pipeline_sync(resume_text, job_text)
+            st.session_state["analysis_result"] = result
             status.update(label="✅ Analysis complete!", state="complete")
         except Exception as e:
             status.update(label="Analysis failed", state="error")
             st.error(f"Error: {e}")
             st.stop()
 
-    render_results(result)
+if "analysis_result" in st.session_state:
+    render_results(st.session_state["analysis_result"])

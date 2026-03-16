@@ -1,6 +1,7 @@
 """Results tabs — rendered after pipeline completes."""
 
 import streamlit as st
+import re
 from src.models.analysis import FullAnalysis
 from ui.components import render_score_cards, render_skill_chips, render_result_box
 from src.utils.pdf import create_resume_pdf, create_cover_letter_pdf
@@ -47,11 +48,20 @@ def _render_fit_tab(result: FullAnalysis) -> None:
 def _render_resume_tab(result: FullAnalysis) -> None:
     render_result_box(result.optimized_resume)
     try:
-        pdf_bytes = create_resume_pdf(result.optimized_resume, name="Optimized Resume")
+        # Extract candidate name from optimized resume for filename
+        candidate_name = "resume"
+        for line in result.optimized_resume.split('\n'):
+            if line.strip().startswith('# '):
+                candidate_name = line.strip()[2:].strip()
+                # Clean the name for filename (remove spaces and special chars)
+                candidate_name = re.sub(r'[^\w\s-]', '', candidate_name).strip().replace(' ', '_')
+                break
+        
+        pdf_bytes = create_resume_pdf(result.optimized_resume, filename_title="Optimized Resume")
         st.download_button(
             "⬇️ Download Resume PDF",
             data=pdf_bytes,
-            file_name="optimized_resume.pdf",
+            file_name=f"{candidate_name}_resume.pdf",
             mime="application/pdf",
         )
     except Exception as e:

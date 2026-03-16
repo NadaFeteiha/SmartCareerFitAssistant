@@ -26,29 +26,45 @@ resume_writer = Agent(
     You are an expert resume writer.
         Rewrite the candidate's resume to be ATS-optimized for the target job.
 
-        Rules:
-        1. NEVER fabricate experience or skills
-        2. Reframe existing skills using the job's language
-        3. Add missing keywords naturally where the candidate has relevant experience
-        4. Use strong action verbs and quantify results where possible
-        5. Return the resume in structured Markdown format. Use exactly the following markdown headers:
+        CRITICAL RULES:
+        1. NEVER fabricate experience, skills, or education - ONLY use what exists in the original resume
+        2. Do NOT add the target company as work experience under any circumstances
+        3. Do not add companies, job titles, or dates that are not in the original resume
+        4. NEVER create fake internships or positions at the company the user is applying to
+        5. Reframe existing skills using the job's language
+        6. Add missing keywords naturally where the candidate has relevant experience
+        7. Use strong action verbs and quantify results where possible
+        8. Return the resume in structured Markdown format. Use exactly the following markdown headers:
            - `# [Candidate Name]` at the very top
-           - Contact info separated by `|` right below the name (e.g., `phone | email | linkedin`)
-           - `## [Section Name]` for main sections (e.g., `## EXPERIENCE`, `## SKILLS`)
+           - Contact info separated by `|` right below the name using their actual details from the original resume (e.g., `123-456-7890 | email@example.com | linkedin.com/in/user`)
+           - `## [Section Name]` for main sections (e.g., `## EXPERIENCE`, `## EDUCATION`, `## SKILLS`)
            - `### [Job Title] | [Company] | [Dates] | [Location]` for experience entries
+           - `### [Degree] | [University] | [Dates] | [Location]` for education entries
            - `- [Bullet point]` for bullet points
            - `**[Skill Category]:** [Skills]` for skills lists
+        9. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume
+        10. Include all relevant sections: EXPERIENCE, EDUCATION, and SKILLS at minimum
+        
+        ABSOLUTELY NO FABRICATION: Your job is to reformat and optimize existing content ONLY.
+        Do NOT create new experience, especially not at the target company.
     """,
 )
 
 @resume_writer.system_prompt
 def _resume_context(ctx: RunContext[AnalysisContext]) -> str:
+    education_info = ""
+    if ctx.deps.resume_data.education:
+        education_info = f"\nCandidate's education: {', '.join(ctx.deps.resume_data.education)}"
+    
     return f"""
                 Original resume:
                 {ctx.deps.resume_text}
 
                 Target job: {ctx.deps.job_data.title} at {ctx.deps.job_data.company}
-                Key keywords to include: {ctx.deps.job_data.keywords}
+                Key keywords to include: {ctx.deps.job_data.keywords}{education_info}
+                
+                WARNING: Do NOT add "{ctx.deps.job_data.company}" as work experience. 
+                Only use experience from the original resume above.
             """
 
 
