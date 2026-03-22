@@ -57,6 +57,10 @@ def unwrap_llm_json(raw: str) -> str:
             clean = clean[4:]
         clean = clean.strip()
 
+    # Step 1b: remove control characters that make JSON invalid
+    # Keep \t (0x09), \n (0x0A), \r (0x0D) — strip everything else in 0x00-0x1F
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", clean)
+
     # Step 2: try to parse as-is first to avoid corrupting valid JSON
     # (e.g. _repair_json's single-quote regex mangles apostrophes in strings)
     def _try_parse(text: str):
@@ -71,11 +75,28 @@ def unwrap_llm_json(raw: str) -> str:
         repaired = _repair_json(clean)
         parsed, ok = _try_parse(repaired)
         if not ok:
-            # Last resort: extract the first {...} block and repair
-            match = re.search(r"\{.*\}", clean, re.DOTALL)
-            if match:
-                return _repair_json(match.group(0))
-            return clean
+            # Step 2c: Try to fix truncation by appending logical closing characters
+            for suffix in ['"}', '}', '"]}', ']}']:
+                parsed, ok = _try_parse(repaired + suffix)
+                if ok:
+                    break
+            if not ok:
+                # Last resort: extract the first {...} block and repair
+                match = re.search(r"\{.*\}", clean, re.DOTALL)
+                if match:
+                    # Could still be malformed or need the suffix trick
+                    extracted = match.group(0)
+                    for suffix in ["", '"}', '}', '"]}', ']}']:
+                        inner_parsed, inner_ok = _try_parse(_repair_json(extracted) + suffix)
+                        if inner_ok:
+                            return json.dumps(inner_parsed)
+                    return _repair_json(extracted)
+                # If everything failed, just try appending suffixes to the raw clean string
+                for suffix in ['"}', '}', '"]}', ']}']:
+                    last_parsed, last_ok = _try_parse(clean + suffix)
+                    if last_ok:
+                        return json.dumps(last_parsed)
+                return clean
 
     # Step 3: unwrap tool-call envelope if present
     if isinstance(parsed, dict) and "parameters" in parsed:

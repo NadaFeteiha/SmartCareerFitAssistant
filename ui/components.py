@@ -66,10 +66,16 @@ def render_score_cards(fit: FitScore) -> None:
         <div class="score-label">Keywords</div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown(
-        f"<p style='color:#6b7fa3;font-size:13px;margin-top:12px;'>💬 {fit.explanation}</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"""
+    <div style="margin-top: 1.5rem; padding: 1.25rem; border-radius: 8px; background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1);">
+        <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #e2e8f0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+            🔍 Score Analysis
+        </h4>
+        <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 0;">
+            {fit.explanation}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def render_result_box(content: str) -> None:
