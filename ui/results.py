@@ -9,7 +9,7 @@ import streamlit as st
 
 from src.models.analysis import FullAnalysis
 from ui.components import render_result_box, render_score_cards, render_skill_chips
-from ui.resume_handlers import on_resume_markdown_changed
+from ui.resume_handlers import on_resume_markdown_changed, on_cover_letter_changed
 from ui.skill_survey import render_skill_check_assistant
 from src.utils.pdf import (
     create_cover_letter_docx,
@@ -160,30 +160,53 @@ def _render_resume_tab(result: FullAnalysis) -> None:
 
 
 def _render_cover_letter_tab(result: FullAnalysis) -> None:
-    render_result_box(result.cover_letter)
+    st.caption("Edit your cover letter below. Changes are saved automatically.")
+    
+    if "cover_letter_draft" not in st.session_state:
+        st.session_state.cover_letter_draft = result.cover_letter
+        
+    col_edit, col_prev = st.columns(2)
+    with col_edit:
+        st.text_area(
+            "Editable cover letter",
+            height=600,
+            key="cover_letter_draft",
+            on_change=on_cover_letter_changed,
+            label_visibility="collapsed",
+        )
+        
+    cl = st.session_state.get("cover_letter_draft", result.cover_letter)
+    
+    with col_prev:
+        with st.container(height=600, border=True):
+            render_result_box(cl)
 
-    col1, col2 = st.columns(2)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    
+    col1, col2, _col_spacer = st.columns([1.5, 1.5, 3])
     with col1:
         try:
-            pdf_bytes = create_cover_letter_pdf(result.cover_letter, name="Cover Letter")
+            pdf_bytes = create_cover_letter_pdf(cl, name="Cover Letter")
             st.download_button(
                 "⬇️ Download as PDF",
                 data=pdf_bytes,
                 file_name="cover_letter.pdf",
                 mime="application/pdf",
                 key="cl_pdf_dl",
+                use_container_width=True,
             )
         except Exception as e:
             st.error(f"PDF error: {e}")
     with col2:
         try:
-            docx_bytes = create_cover_letter_docx(result.cover_letter)
+            docx_bytes = create_cover_letter_docx(cl)
             st.download_button(
                 "⬇️ Download as Word",
                 data=docx_bytes,
                 file_name="cover_letter.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key="cl_docx_dl",
+                use_container_width=True,
             )
         except Exception as e:
             st.error(f"Word error: {e}")

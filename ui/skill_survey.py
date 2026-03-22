@@ -59,6 +59,7 @@ def _advance_skill_yes() -> None:
     st.session_state.analysis_result = ar.model_copy(update={"optimized_resume": new_md})
     st.session_state.resume_markdown_draft = new_md
     st.session_state.skill_chat.append({"role": "user", "content": f"Yes — I have: {skill_name}"})
+    st.session_state.setdefault("skill_survey_confirmed", []).append(skill_name)
     st.session_state.skill_chat.append(
         {
             "role": "assistant",
@@ -96,6 +97,24 @@ def _finalize_skill_survey() -> None:
         old_fit = ar.fit_score
         new_fit, new_gaps = recalculate_fit_and_gaps_sync(ctx)
         
+        # Scrub confirmed skills so AI doesn't hallucinate them back
+        confirmed = st.session_state.get("skill_survey_confirmed", [])
+        if confirmed:
+            confirmed_lower = {c.lower() for c in confirmed}
+            new_gaps.missing_hard_skills = [
+                s for s in new_gaps.missing_hard_skills 
+                if not any(c in str(s).lower() for c in confirmed_lower)
+            ]
+            new_gaps.missing_soft_skills = [
+                s for s in new_gaps.missing_soft_skills 
+                if not any(c in str(s).lower() for c in confirmed_lower)
+            ]
+            if new_gaps.missing_requirements and new_gaps.missing_requirements.missing_skills:
+                new_gaps.missing_requirements.missing_skills = [
+                    s for s in new_gaps.missing_requirements.missing_skills 
+                    if not any(c in str(s).lower() for c in confirmed_lower)
+                ]
+
         # Ensure overall score does not decrease upon adding a confirmed skill
         if new_fit.overall < old_fit.overall:
             new_fit.overall = old_fit.overall
@@ -115,6 +134,7 @@ def _finalize_skill_survey() -> None:
                 ),
             }
         )
+        st.toast("Scores & Learning Roadmap successfully updated! 🎯", icon="✅")
     except Exception as e:
         st.session_state.skill_chat.append(
             {
@@ -138,54 +158,56 @@ def render_skill_check_assistant(result: FullAnalysis, ctx: AnalysisContext) -> 
                 "role": "assistant",
                 "content": (
                     "Hi — I'll go through each **missing skill** from the analysis. "
-                    "If you actually have it (including equivalent experience), say **Yes** and I'll add it to your optimized resume. "
-                    "When we're done, I'll **recalculate your fit score**."
+                    "If you actually have it, say **Yes** and I'll add it to your optimized resume. "
+                    "When we're done, I'll **recalculate your fit score & roadmap** globally."
                 ),
             }
         ]
 
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    st.markdown("### 💬 Skill check assistant")
-    st.caption(
-        "Answer one skill at a time. Confirmed skills are appended under "
-        "“Additional skills (self-confirmed)” on your optimized resume."
-    )
+    if st.session_state.skill_survey_finished:
+        return
 
     q = st.session_state.skill_survey_queue
     idx = st.session_state.skill_survey_index
 
-    with st.container(border=True):
-        for msg in st.session_state.skill_chat:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+    with st.popover("💬 Chat with AI Assistant", use_container_width=False):
+        st.markdown("### 💬 Skill check assistant")
+        st.caption(
+            "Answer one skill at a time. Confirmed skills are appended under "
+            "“Additional skills (self-confirmed)” on your optimized resume."
+        )
 
-        if st.session_state.skill_survey_finished:
-            return
+        with st.container(height=400, border=False):
+            for msg in st.session_state.skill_chat:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
 
-        if idx >= len(q):
-            _finalize_skill_survey()
-            st.rerun()
-            return
+            if idx >= len(q):
+                _finalize_skill_survey()
+                st.rerun()
+                return
 
-        skill_name, kind = q[idx]
-        kind_label = "technical" if kind == "hard" else "soft"
-        with st.chat_message("assistant"):
-            st.markdown(
-                f"**Skill {idx + 1} of {len(q)}** ({kind_label})\n\n"
-                f"Do you have **{skill_name}** (or close equivalent experience you could truthfully put on a resume)?"
-            )
+            skill_name, kind = q[idx]
+            kind_label = "technical" if kind == "hard" else "soft"
+            with st.chat_message("assistant"):
+                st.markdown(
+                    f"**Skill {idx + 1} of {len(q)}** ({kind_label})\n\n"
+                    f"Do you have **{skill_name}**?"
+                )
 
-        c1, c2 = st.columns(2)
-        with c1:
-            st.button(
-                "Yes — add to resume",
-                key=f"skill_yes_{idx}",
-                type="primary",
-                on_click=_advance_skill_yes,
-            )
-        with c2:
-            st.button(
-                "No / skip",
-                key=f"skill_no_{idx}",
-                on_click=_advance_skill_no,
-            )
+            c1, c2 = st.columns(2)
+            with c1:
+                st.button(
+                    "Yes — Add",
+                    key=f"skill_yes_{idx}",
+                    type="primary",
+                    use_container_width=True,
+                    on_click=_advance_skill_yes,
+                )
+            with c2:
+                st.button(
+                    "No / skip",
+                    key=f"skill_no_{idx}",
+                    use_container_width=True,
+                    on_click=_advance_skill_no,
+                )

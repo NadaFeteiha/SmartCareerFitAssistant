@@ -212,6 +212,24 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 .missing-req-panel li::before {{ content: '•'; position: absolute; left: 0; color: #6366F1; }}
 
 [data-testid="stAlert"] {{ border-radius: 12px !important; border: 1px solid rgba(255,255,255,0.05) !important; }}
+
+[data-testid="stPopover"] {{
+    position: fixed !important;
+    bottom: 2rem !important;
+    right: 2rem !important;
+    z-index: 1000 !important;
+    width: auto !important;
+}}
+[data-testid="stPopover"] > button {{
+    width: auto !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+    border-radius: 50px !important;
+    padding: 12px 24px !important;
+    background: linear-gradient(135deg, #6366F1, #8B5CF6) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600 !important;
+}}
 </style>
 """,
     "light": f"""
@@ -404,6 +422,24 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 .missing-req-panel li::before {{ content: '•'; position: absolute; left: 0; color: #4F46E5; }}
 
 [data-testid="stAlert"] {{ border-radius: 12px !important; border: 1px solid rgba(0,0,0,0.05) !important; }}
+
+[data-testid="stPopover"] {{
+    position: fixed !important;
+    bottom: 2rem !important;
+    right: 2rem !important;
+    z-index: 1000 !important;
+    width: auto !important;
+}}
+[data-testid="stPopover"] > button {{
+    width: auto !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2) !important;
+    border-radius: 50px !important;
+    padding: 12px 24px !important;
+    background: linear-gradient(135deg, #4F46E5, #4338CA) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600 !important;
+}}
 </style>
 """
 }

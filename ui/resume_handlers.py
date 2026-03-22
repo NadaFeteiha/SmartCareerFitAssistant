@@ -50,3 +50,12 @@ def overall_to_letter_grade(overall: int) -> str:
     if overall >= 60:
         return "D"
     return "F"
+
+
+def on_cover_letter_changed() -> None:
+    cl = st.session_state.get("cover_letter_draft", "")
+    if "analysis_result" in st.session_state:
+        ar = st.session_state.analysis_result
+        st.session_state.analysis_result = ar.model_copy(
+            update={"cover_letter": cl}
+        )
