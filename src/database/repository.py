@@ -1,6 +1,8 @@
 import json
-from src.db.database import get_connection
+
+from src.database.database import get_connection
 from src.models.analysis import FullAnalysis
+
 
 def save_analysis(analysis: FullAnalysis, job_title: str = "", company: str = "") -> int:
     """Save a FullAnalysis to the database. Returns the new row ID."""
@@ -30,11 +32,10 @@ def save_analysis(analysis: FullAnalysis, job_title: str = "", company: str = ""
     conn.close()
     return row_id
 
+
 def get_all_analyses() -> list[dict]:
-    """Fetch all saved analyses, newest first."""
+    """Fetch all saved analyses, newest first (by insert id)."""
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM analyses ORDER BY created_at DESC"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM analyses ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]

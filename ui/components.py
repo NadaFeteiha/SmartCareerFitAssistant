@@ -1,7 +1,11 @@
 """Reusable UI components — hero, step labels, score cards, chips, result boxes."""
 
+import html
+
 import streamlit as st
+
 from src.models.analysis import FitScore
+from ui.resume_handlers import overall_to_letter_grade
 
 
 def render_hero() -> None:
@@ -33,27 +37,27 @@ def render_step_label(step: int, title: str) -> None:
 
 
 def render_score_cards(fit: FitScore) -> None:
-    """Render the four score metric cards and the explanation caption."""
+    """Render score cards, letter grade, and explanation (uses theme CSS classes)."""
     c1, c2, c3, c4 = st.columns(4)
 
     c1.markdown(f"""
     <div class="score-card">
-        <div class="score-number">{fit.overall}</div>
-        <div class="score-label">Overall Score / 100</div>
+        <div class="score-number" style="font-size:2.4rem">{fit.overall}</div>
+        <div class="score-label">Overall / 100</div>
     </div>""", unsafe_allow_html=True)
 
     c2.markdown(f"""
     <div class="score-card">
         <div class="score-number" style="font-size:2rem">
-            {fit.skill_match}<span style="font-size:1rem;color:#6b7fa3">/40</span>
+            {fit.skill_match}<span class="score-denom">/40</span>
         </div>
-        <div class="score-label">Skill Match</div>
+        <div class="score-label">Skill match</div>
     </div>""", unsafe_allow_html=True)
 
     c3.markdown(f"""
     <div class="score-card">
         <div class="score-number" style="font-size:2rem">
-            {fit.experience_alignment}<span style="font-size:1rem;color:#6b7fa3">/30</span>
+            {fit.experience_alignment}<span class="score-denom">/30</span>
         </div>
         <div class="score-label">Experience</div>
     </div>""", unsafe_allow_html=True)
@@ -61,19 +65,17 @@ def render_score_cards(fit: FitScore) -> None:
     c4.markdown(f"""
     <div class="score-card">
         <div class="score-number" style="font-size:2rem">
-            {fit.keyword_coverage}<span style="font-size:1rem;color:#6b7fa3">/30</span>
+            {fit.keyword_coverage}<span class="score-denom">/30</span>
         </div>
         <div class="score-label">Keywords</div>
     </div>""", unsafe_allow_html=True)
 
+    safe_exp = html.escape(fit.explanation)
     st.markdown(f"""
-    <div style="margin-top: 1.5rem; padding: 1.25rem; border-radius: 8px; background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1);">
-        <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #e2e8f0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
-            🔍 Score Analysis
-        </h4>
-        <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 0;">
-            {fit.explanation}
-        </p>
+    <style>.score-denom {{ font-size: 1rem; opacity: 0.65; }}</style>
+    <div class="score-analysis-box" style="margin-top: 1.5rem; padding: 1.25rem; border-radius: 8px;">
+        <h4 style="margin-top: 0; margin-bottom: 0.5rem; font-size: 1.05rem;">🔍 Score analysis</h4>
+        <p style="font-size: 14px; line-height: 1.6; margin-bottom: 0;">{safe_exp}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -93,14 +95,14 @@ def render_skill_chips(strengths: list[str], missing_hard: list[str], missing_so
 
     with col_a:
         st.markdown("#### ✅ Your Strengths")
-        chips = "".join(f'<span class="chip-green">{s}</span>' for s in strengths)
+        chips = "".join(f'<span class="chip-green">{html.escape(s)}</span>' for s in strengths)
         st.markdown(chips or "<p style='color:#6b7fa3'>None identified</p>",
                     unsafe_allow_html=True)
 
     with col_b:
         st.markdown("#### ❌ Missing Skills")
         chips = "".join(
-            f'<span class="chip-red">{s}</span>'
+            f'<span class="chip-red">{html.escape(s)}</span>'
             for s in missing_hard + missing_soft
         )
         st.markdown(chips or "<p style='color:#6b7fa3'>No gaps found</p>",

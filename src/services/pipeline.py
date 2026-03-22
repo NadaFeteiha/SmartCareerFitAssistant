@@ -1,12 +1,14 @@
 import asyncio
-from src.agents.extractor import extract_resume, extract_job
-from src.agents.analyzer import score_candidate, analyze_gaps, AnalysisContext
-from src.agents.generator import resume_writer, cover_letter_writer
-from src.models.analysis import FullAnalysis
-from src.db.repository import save_analysis
+
+from src.agents.analyzer import AnalysisContext, analyze_gaps, score_candidate
+from src.agents.extractor import extract_job, extract_resume
+from src.agents.generator import cover_letter_writer, resume_writer
+from src.agents.keyword_optimizer import extract_top_jd_keywords
+from src.database.repository import save_analysis
+from src.models.analysis import FitScore, FullAnalysis, SkillGapReport
 
 
-async def run_pipeline(resume_text: str, job_text: str) -> FullAnalysis:
+async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
     """
     One pipeline, four outputs.
     Step 1: Extract structured data from resume and job description.
@@ -18,6 +20,10 @@ async def run_pipeline(resume_text: str, job_text: str) -> FullAnalysis:
     print("Step 1/3: Extracting structured data...")
     resume_data = await extract_resume(resume_text)
     job_data = await extract_job(job_text)
+
+    top_kw = await extract_top_jd_keywords(job_text)
+    merged_keywords = list(dict.fromkeys(top_kw + list(job_data.keywords)))[:35]
+    job_data = job_data.model_copy(update={"keywords": merged_keywords})
 
     ctx = AnalysisContext(
         resume_text=resume_text,
@@ -44,9 +50,20 @@ async def run_pipeline(resume_text: str, job_text: str) -> FullAnalysis:
     save_analysis(result, job_title=job_data.title, company=job_data.company)
     print("Done! Results saved to database.")
 
-    return result
+    return result, ctx
 
 
-def run_pipeline_sync(resume_text: str, job_text: str) -> FullAnalysis:
+def run_pipeline_sync(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
     """Synchronous wrapper for use in Streamlit."""
     return asyncio.run(run_pipeline(resume_text, job_text))
+
+
+async def recalculate_fit_and_gaps(ctx: AnalysisContext) -> tuple[FitScore, SkillGapReport]:
+    """Re-run scorer and gap analysis on an updated context (e.g. after user confirms skills)."""
+    fit_score = await score_candidate(ctx)
+    skill_gaps = await analyze_gaps(ctx)
+    return fit_score, skill_gaps
+
+
+def recalculate_fit_and_gaps_sync(ctx: AnalysisContext) -> tuple[FitScore, SkillGapReport]:
+    return asyncio.run(recalculate_fit_and_gaps(ctx))

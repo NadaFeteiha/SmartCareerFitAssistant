@@ -3,7 +3,7 @@ CLI entry point — useful for testing the pipeline without the UI.
 Usage: uv run python main.py
 """
 import asyncio
-from src.db.database import init_db
+from src.database.database import init_db
 from src.services.pipeline import run_pipeline
 
 SAMPLE_RESUME = """
@@ -52,7 +52,7 @@ Responsibilities:
 async def main():
     init_db()
     print("Running pipeline with sample data...\n")
-    result = await run_pipeline(SAMPLE_RESUME, SAMPLE_JD)
+    result, _ = await run_pipeline(SAMPLE_RESUME, SAMPLE_JD)
 
     print(f"\n{'='*50}")
     print(f"FIT SCORE: {result.fit_score.overall}/100")

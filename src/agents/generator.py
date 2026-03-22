@@ -32,7 +32,7 @@ resume_writer = Agent(
         3. Do not add companies, job titles, or dates that are not in the original resume
         4. NEVER create fake internships or positions at the company the user is applying to
         5. Reframe existing skills using the job's language
-        6. Add missing keywords naturally where the candidate has relevant experience
+        6. Naturally integrate the employer's top ATS keywords (provided below) where they align with real experience — do not invent experience to place a keyword
         7. Use strong action verbs and quantify results where possible
         8. Return the resume in structured Markdown format. Use exactly the following markdown headers:
            - `# [Candidate Name]` at the very top
@@ -41,9 +41,11 @@ resume_writer = Agent(
            - `### [Job Title] | [Company] | [Dates] | [Location]` for experience entries
            - `### [Degree] | [University] | [Dates] | [Location]` for education entries
            - `- [Bullet point]` for bullet points
-           - `**[Skill Category]:** [Skills]` for skills lists
-        9. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume
-        10. Include all relevant sections: EXPERIENCE, EDUCATION, and SKILLS at minimum
+        9. For the SKILLS section, ALWAYS group skills into logical sub-categories instead of writing one long list. Use this format:
+           - `**[Category]**: [Skills separated by commas]` (e.g., `**Languages**: Python, Java`)
+           - Ensure categories make sense (e.g., Languages, Frameworks, Cloud & Tools, Soft Skills).
+        10. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume.
+        11. Include all relevant sections: EXPERIENCE, EDUCATION, and SKILLS at minimum.
         
         ABSOLUTELY NO FABRICATION: Your job is to reformat and optimize existing content ONLY.
         Do NOT create new experience, especially not at the target company.
@@ -56,14 +58,18 @@ def _resume_context(ctx: RunContext[AnalysisContext]) -> str:
     if ctx.deps.resume_data.education:
         education_info = f"\nCandidate's education: {', '.join(ctx.deps.resume_data.education)}"
     
+    top_ats = ctx.deps.job_data.keywords[:10] if ctx.deps.job_data.keywords else []
     return f"""
                 Original resume:
                 {ctx.deps.resume_text}
 
                 Target job: {ctx.deps.job_data.title} at {ctx.deps.job_data.company}
-                Key keywords to include: {ctx.deps.job_data.keywords}{education_info}
-                
-                WARNING: Do NOT add "{ctx.deps.job_data.company}" as work experience. 
+                Full keyword list from JD extraction: {ctx.deps.job_data.keywords}{education_info}
+
+                Top 10 ATS keywords to weave in where truthful (skills, bullets, summary):
+                {top_ats}
+
+                WARNING: Do NOT add "{ctx.deps.job_data.company}" as work experience.
                 Only use experience from the original resume above.
             """
 
@@ -94,22 +100,3 @@ def _cover_letter_context(ctx: RunContext[AnalysisContext]) -> str:
                 Candidate's top skills: {top_skills}
                 Candidate summary: {ctx.deps.resume_data.summary}
             """
-
-try:
-    from pipeline.generator import generate_with_prompt
-except ImportError:
-    pass # To not break the existing script since this module is unknown
-import os
-
-def generate_resume(resume_text: str, job_description: str) -> str:
-    """
-    Generates a new, tailored resume to align with the given job description.
-    """
-    prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "resume_prompt.txt")
-    
-    variables = {
-        "job_description": job_description,
-        "resume_text": resume_text
-    }
-    
-    return generate_with_prompt(prompt_path, variables)

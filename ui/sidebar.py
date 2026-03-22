@@ -1,16 +1,25 @@
-"""Sidebar component — branding + user profile form."""
+"""Sidebar — theme, branding, profile form."""
+
+from __future__ import annotations
 
 import streamlit as st
 
 
 def render_sidebar() -> dict:
     """
-    Render the sidebar with branding and profile form.
+    Render the sidebar with theme toggle, branding, and profile form.
     Returns the current profile dict from session state.
     """
     with st.sidebar:
+        st.selectbox(
+            "Appearance",
+            ["dark", "light"],
+            key="ui_theme",
+            help="Switches global colors for the main app and components.",
+        )
+
         st.markdown("""
-        <div style="padding: 20px 0 16px; border-bottom: 1px solid #1e2535; margin-bottom: 20px;">
+        <div style="padding: 20px 0 16px; border-bottom: 1px solid rgba(148,163,184,0.25); margin-bottom: 20px;">
             <div class="sidebar-logo">SmartCareerFit</div>
             <div class="sidebar-sub">Your AI career co-pilot</div>
         </div>
@@ -19,7 +28,6 @@ def render_sidebar() -> dict:
         st.markdown("**Your Profile**")
         st.caption("Personalizes your cover letter and resume tone.")
 
-        # Pre-fill from session state if a profile was saved before
         saved = st.session_state.get("profile", {})
 
         with st.form("profile_form"):
