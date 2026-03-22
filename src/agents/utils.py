@@ -75,11 +75,28 @@ def unwrap_llm_json(raw: str) -> str:
         repaired = _repair_json(clean)
         parsed, ok = _try_parse(repaired)
         if not ok:
-            # Last resort: extract the first {...} block and repair
-            match = re.search(r"\{.*\}", clean, re.DOTALL)
-            if match:
-                return _repair_json(match.group(0))
-            return clean
+            # Step 2c: Try to fix truncation by appending logical closing characters
+            for suffix in ['"}', '}', '"]}', ']}']:
+                parsed, ok = _try_parse(repaired + suffix)
+                if ok:
+                    break
+            if not ok:
+                # Last resort: extract the first {...} block and repair
+                match = re.search(r"\{.*\}", clean, re.DOTALL)
+                if match:
+                    # Could still be malformed or need the suffix trick
+                    extracted = match.group(0)
+                    for suffix in ["", '"}', '}', '"]}', ']}']:
+                        inner_parsed, inner_ok = _try_parse(_repair_json(extracted) + suffix)
+                        if inner_ok:
+                            return json.dumps(inner_parsed)
+                    return _repair_json(extracted)
+                # If everything failed, just try appending suffixes to the raw clean string
+                for suffix in ['"}', '}', '"]}', ']}']:
+                    last_parsed, last_ok = _try_parse(clean + suffix)
+                    if last_ok:
+                        return json.dumps(last_parsed)
+                return clean
 
     # Step 3: unwrap tool-call envelope if present
     if isinstance(parsed, dict) and "parameters" in parsed:

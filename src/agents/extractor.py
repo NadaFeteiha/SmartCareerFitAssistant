@@ -76,6 +76,7 @@ _resume_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
+    model_settings={"max_tokens": 4000},
     system_prompt="""You are a resume parser. Extract structured data from the resume text.
 
 Return ONLY a JSON object with exactly these fields:
@@ -101,6 +102,7 @@ No markdown. No explanation. No wrapper keys. Just the JSON object.""",
 )
 
 
+
 async def extract_resume(text: str) -> ResumeData:
     """Run the resume extractor and validate the output as ResumeData."""
     raw = (await _resume_agent.run(text)).output
@@ -119,6 +121,7 @@ _job_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
+    model_settings={"max_tokens": 4000},
     system_prompt="""You are a job description parser. Extract structured data.
 
 Return ONLY a JSON object with exactly these fields:

@@ -35,6 +35,7 @@ _scorer_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
+    model_settings={"max_tokens": 4000},
     system_prompt="""You are a career analyst. Score the candidate's fit for a job.
 
 Return ONLY a JSON object with exactly these fields:
@@ -124,6 +125,7 @@ _gap_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
+    model_settings={"max_tokens": 4000},
     system_prompt="""You are a career coach. Identify skill gaps and create a learning roadmap.
 
 Return ONLY a JSON object with exactly these fields:
