@@ -27,31 +27,6 @@ def on_resume_markdown_changed() -> None:
     except Exception as e:
         st.session_state["_rescore_error"] = str(e)
 
-
-def overall_to_letter_grade(overall: int) -> str:
-    if overall >= 97:
-        return "A+"
-    if overall >= 93:
-        return "A"
-    if overall >= 90:
-        return "A−"
-    if overall >= 87:
-        return "B+"
-    if overall >= 83:
-        return "B"
-    if overall >= 80:
-        return "B−"
-    if overall >= 77:
-        return "C+"
-    if overall >= 73:
-        return "C"
-    if overall >= 70:
-        return "C−"
-    if overall >= 60:
-        return "D"
-    return "F"
-
-
 def on_cover_letter_changed() -> None:
     cl = st.session_state.get("cover_letter_draft", "")
     if "analysis_result" in st.session_state:
@@ -59,3 +34,17 @@ def on_cover_letter_changed() -> None:
         st.session_state.analysis_result = ar.model_copy(
             update={"cover_letter": cl}
         )
+
+
+def overall_to_letter_grade(score: int) -> str:
+    """Convert a numeric score (0-100) to a letter grade."""
+    if score >= 90:
+        return "A"
+    elif score >= 80:
+        return "B"
+    elif score >= 70:
+        return "C"
+    elif score >= 60:
+        return "D"
+    else:
+        return "F"

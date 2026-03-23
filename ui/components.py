@@ -89,6 +89,114 @@ def render_result_box(content: str) -> None:
     )
 
 
+def render_pdf_preview(markdown_content: str) -> None:
+    """Render a professional PDF preview of resume that updates dynamically."""
+    import base64
+    from src.utils.pdf import create_resume_pdf
+    
+    try:
+        # Generate PDF bytes
+        pdf_bytes = create_resume_pdf(markdown_content)
+        
+        # Convert to base64 for embedding
+        base64_pdf = base64.b64encode(pdf_bytes.getvalue()).decode('utf-8')
+        
+        # Embed PDF with professional styling
+        pdf_display = f'''
+        <div style="
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: #ffffff;
+            height: 600px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        ">
+            <div style="
+                text-align: center;
+                margin-bottom: 12px;
+                font-weight: 600;
+                color: #1e293b;
+                font-size: 14px;
+            ">
+                📄 Resume Preview
+            </div>
+            <iframe 
+                src="data:application/pdf;base64,{base64_pdf}" 
+                width="100%" 
+                height="550px" 
+                style="
+                    border: none;
+                    border-radius: 4px;
+                    background: white;
+                "
+                title="Resume Preview"
+            ></iframe>
+        </div>
+        '''
+        
+        st.markdown(pdf_display, unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error(f"Error generating PDF preview: {str(e)}")
+        # Fallback to text display
+        render_result_box(markdown_content)
+
+
+def render_cover_letter_pdf_preview(cover_letter_content: str) -> None:
+    """Render a professional PDF preview of cover letter that updates dynamically."""
+    import base64
+    from src.utils.pdf import create_cover_letter_pdf
+    
+    try:
+        # Generate PDF bytes
+        pdf_bytes = create_cover_letter_pdf(cover_letter_content, name="Cover Letter")
+        
+        # Convert to base64 for embedding
+        base64_pdf = base64.b64encode(pdf_bytes.getvalue()).decode('utf-8')
+        
+        # Embed PDF with professional styling
+        pdf_display = f'''
+        <div style="
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: #ffffff;
+            height: 600px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        ">
+            <div style="
+                text-align: center;
+                margin-bottom: 12px;
+                font-weight: 600;
+                color: #1e293b;
+                font-size: 14px;
+            ">
+                📄 Cover Letter Preview
+            </div>
+            <iframe 
+                src="data:application/pdf;base64,{base64_pdf}" 
+                width="100%" 
+                height="550px" 
+                style="
+                    border: none;
+                    border-radius: 4px;
+                    background: white;
+                "
+                title="Cover Letter Preview"
+            ></iframe>
+        </div>
+        '''
+        
+        st.markdown(pdf_display, unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error(f"Error generating PDF preview: {str(e)}")
+        # Fallback to text display
+        render_result_box(cover_letter_content)
+
+
 def render_skill_chips(strengths: list[str], missing_hard: list[str], missing_soft: list[str]) -> None:
     """Render strength and missing skill chips side by side."""
     col_a, col_b = st.columns(2)
