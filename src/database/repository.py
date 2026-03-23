@@ -39,3 +39,24 @@ def get_all_analyses() -> list[dict]:
     rows = conn.execute("SELECT * FROM analyses ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def add_user_skill(user_name: str, skill_name: str) -> None:
+    """Save a confirmed skill for a user."""
+    if not user_name or not skill_name:
+        return
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO user_skills (user_name, skill_name) VALUES (?, ?)",
+        (user_name.strip(), skill_name.strip())
+    )
+    conn.commit()
+    conn.close()
+
+def get_user_skills(user_name: str) -> list[str]:
+    """Retrieve all permanently confirmed skills for a specific user."""
+    if not user_name:
+        return []
+    conn = get_connection()
+    rows = conn.execute("SELECT skill_name FROM user_skills WHERE user_name = ?", (user_name.strip(),)).fetchall()
+    conn.close()
+    return [r["skill_name"] for r in rows]

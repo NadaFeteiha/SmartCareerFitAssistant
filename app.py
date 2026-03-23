@@ -11,6 +11,7 @@ from src.services.pipeline import run_pipeline_sync
 from src.utils.resume_sections import fingerprint_for_rescoring
 from ui import apply_styles, render_hero, render_results, render_sidebar
 from ui.callbacks import queue_pipeline_run
+from ui.skill_survey import render_chat_assistant
 from ui.input_panel import (
     get_job_text_for_pipeline,
     get_resume_text_for_pipeline,
@@ -87,6 +88,8 @@ if st.session_state.pop("pipeline_queued", False):
                 status.update(label="Analysis failed", state="error")
                 st.error(f"Error: {e}")
                 st.stop()
+
+render_chat_assistant()
 
 if "analysis_result" in st.session_state:
     render_results()

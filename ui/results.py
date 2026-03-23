@@ -10,7 +10,6 @@ import streamlit as st
 from src.models.analysis import FullAnalysis
 from ui.components import render_result_box, render_score_cards, render_skill_chips
 from ui.resume_handlers import on_resume_markdown_changed, on_cover_letter_changed
-from ui.skill_survey import render_skill_check_assistant
 from src.utils.pdf import (
     create_cover_letter_docx,
     create_cover_letter_pdf,
@@ -40,7 +39,6 @@ def render_results() -> None:
 
     ctx = st.session_state.get("pipeline_context")
     if ctx is not None:
-        render_skill_check_assistant(result, ctx)
         result = st.session_state["analysis_result"]
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)

@@ -4,8 +4,10 @@ from src.agents.analyzer import AnalysisContext, analyze_gaps, score_candidate
 from src.agents.extractor import extract_job, extract_resume
 from src.agents.generator import cover_letter_writer, resume_writer
 from src.agents.keyword_optimizer import extract_top_jd_keywords
-from src.database.repository import save_analysis
+from src.database.repository import get_user_skills, save_analysis
 from src.models.analysis import FitScore, FullAnalysis, SkillGapReport
+from src.models.resume import Skill
+from src.utils.resume_sections import inject_skill_into_markdown
 
 
 async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
@@ -19,6 +21,17 @@ async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, A
 
     print("Step 1/3: Extracting structured data...")
     resume_data = await extract_resume(resume_text)
+    
+    user_name = resume_data.name
+    if user_name:
+        saved_skills = get_user_skills(user_name)
+        existing_skills = {s.name.lower() for s in resume_data.skills}
+        for sk in saved_skills:
+            if sk.lower() not in existing_skills:
+                resume_data.skills.append(Skill(name=sk, category="hard_skill", proficiency="intermediate"))
+                resume_text = inject_skill_into_markdown(resume_text, sk)
+                existing_skills.add(sk.lower())
+
     job_data = await extract_job(job_text)
 
     top_kw = await extract_top_jd_keywords(job_text)

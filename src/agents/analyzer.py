@@ -184,6 +184,11 @@ def _sanitize_skill_gap_json(clean: str) -> str:
         return clean
     if not isinstance(data, dict):
         return clean
+
+    for key in ("missing_hard_skills", "missing_soft_skills", "learning_roadmap"):
+        if key not in data or not isinstance(data[key], list):
+            data[key] = []
+
     mr = data.get("missing_requirements")
     if mr is None or not isinstance(mr, dict):
         data["missing_requirements"] = {

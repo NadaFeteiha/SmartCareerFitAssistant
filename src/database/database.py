@@ -32,6 +32,12 @@ def init_db() -> None:
             cover_letter TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS user_skills (
+            user_name TEXT,
+            skill_name TEXT,
+            confirmed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_name, skill_name)
+        );
     """)
     conn.commit()
     conn.close()
