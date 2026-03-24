@@ -5,10 +5,10 @@ from __future__ import annotations
 import streamlit as st
 
 from src.agents.analyzer import AnalysisContext
-from src.models.analysis import FullAnalysis
+from src.models.analysis import FullAnalysis, SkillGapReport
 from src.models.resume import Skill
 from src.services.pipeline import recalculate_fit_and_gaps_sync
-from src.utils.resume_sections import inject_skill_into_markdown
+from src.utils.resume_sections import fingerprint_for_rescoring, inject_skill_into_markdown
 from src.utils.skill_validation import is_plausible_gap_skill
 from src.database.repository import add_user_skill
 
@@ -37,6 +37,38 @@ def _build_skill_queue(result: FullAnalysis, ctx: AnalysisContext | None = None)
     return out
 
 
+def _scrub_confirmed_gaps(new_gaps: SkillGapReport, confirmed: list[str]) -> SkillGapReport:
+    """Remove confirmed skills from gap lists so the model does not list them again."""
+    if not confirmed:
+        return new_gaps
+    confirmed_lower = {c.lower() for c in confirmed}
+    mh = [
+        s
+        for s in new_gaps.missing_hard_skills
+        if not any(c in str(s).lower() for c in confirmed_lower)
+    ]
+    ms = [
+        s
+        for s in new_gaps.missing_soft_skills
+        if not any(c in str(s).lower() for c in confirmed_lower)
+    ]
+    mr = new_gaps.missing_requirements
+    mskills = list(mr.missing_skills)
+    if mskills:
+        mskills = [
+            s
+            for s in mskills
+            if not any(c in str(s).lower() for c in confirmed_lower)
+        ]
+    return new_gaps.model_copy(
+        update={
+            "missing_hard_skills": mh,
+            "missing_soft_skills": ms,
+            "missing_requirements": mr.model_copy(update={"missing_skills": mskills}),
+        }
+    )
+
+
 def _advance_skill_yes() -> None:
     ctx = st.session_state.get("pipeline_context")
     if ctx is None:
@@ -59,17 +91,22 @@ def _advance_skill_yes() -> None:
         )
     ar: FullAnalysis = st.session_state.analysis_result
     new_md = inject_skill_into_markdown(ar.optimized_resume, skill_name)
-    st.session_state.analysis_result = ar.model_copy(update={"optimized_resume": new_md})
-    st.session_state.resume_markdown_draft = new_md
-    st.session_state.skill_chat.append({"role": "user", "content": f"Yes — I have: {skill_name}"})
+
     st.session_state.setdefault("skill_survey_confirmed", []).append(skill_name)
     st.session_state.setdefault("skill_survey_answered", set()).add(skill_name.lower())
+
+    st.session_state.skill_chat.append({"role": "user", "content": f"Yes — I have: {skill_name}"})
     st.session_state.skill_chat.append(
         {
             "role": "assistant",
-            "content": f"Added **{skill_name}** to your optimized resume.",
+            "content": f"Added **{skill_name}** to your optimized resume. Your fit score will update when you finish the survey.",
         }
     )
+
+    st.session_state.analysis_result = ar.model_copy(update={"optimized_resume": new_md})
+    st.session_state.resume_markdown_draft = new_md
+    st.session_state._last_md_to_parse = new_md
+
     st.session_state.skill_survey_index = idx + 1
 
 
@@ -100,33 +137,22 @@ def _finalize_skill_survey() -> None:
     try:
         ar: FullAnalysis = st.session_state.analysis_result
         old_fit = ar.fit_score
+        ctx.resume_text = ar.optimized_resume
         new_fit, new_gaps = recalculate_fit_and_gaps_sync(ctx)
-        
-        # Scrub confirmed skills so AI doesn't hallucinate them back
+
         confirmed = st.session_state.get("skill_survey_confirmed", [])
-        if confirmed:
-            confirmed_lower = {c.lower() for c in confirmed}
-            new_gaps.missing_hard_skills = [
-                s for s in new_gaps.missing_hard_skills 
-                if not any(c in str(s).lower() for c in confirmed_lower)
-            ]
-            new_gaps.missing_soft_skills = [
-                s for s in new_gaps.missing_soft_skills 
-                if not any(c in str(s).lower() for c in confirmed_lower)
-            ]
-            if new_gaps.missing_requirements and new_gaps.missing_requirements.missing_skills:
-                new_gaps.missing_requirements.missing_skills = [
-                    s for s in new_gaps.missing_requirements.missing_skills 
-                    if not any(c in str(s).lower() for c in confirmed_lower)
-                ]
+        new_gaps = _scrub_confirmed_gaps(new_gaps, confirmed)
 
         # Ensure overall score does not decrease upon adding a confirmed skill
         if new_fit.overall < old_fit.overall:
-            new_fit.overall = old_fit.overall
+            new_fit = new_fit.model_copy(update={"overall": old_fit.overall})
             
         st.session_state.analysis_result = ar.model_copy(
             update={"fit_score": new_fit, "skill_gaps": new_gaps}
         )
+        st.session_state.resume_markdown_draft = ar.optimized_resume
+        st.session_state._last_md_to_parse = ar.optimized_resume
+        st.session_state["_resume_score_fp"] = fingerprint_for_rescoring(ar.optimized_resume)
 
         new_queue = _build_skill_queue(st.session_state.analysis_result, ctx)
         answered = st.session_state.get("skill_survey_answered", set())
@@ -221,7 +247,7 @@ def render_chat_assistant() -> None:
                 ) + (
                     "I'll go through each **missing skill** from the analysis. "
                     "If you actually have it, say **Yes** and I'll add it to your optimized resume. "
-                    "When we're done, I'll recalculate your score globally."
+                    "When you finish answering, I'll **recalculate your fit score** and update gaps."
                     if queue else "You have no missing skills to verify. Great job!"
                 ),
             }
