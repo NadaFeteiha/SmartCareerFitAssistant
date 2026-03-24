@@ -7,7 +7,7 @@ from src.models.resume import ResumeData
 from src.models.job import JobRequirements
 from src.models.analysis import FitScore, SkillGapReport
 from src.agents.utils import unwrap_llm_json
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 @dataclass
@@ -35,7 +35,7 @@ _scorer_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a career analyst. Score the candidate's fit for a job.
 
 Return ONLY a JSON object with exactly these fields:
@@ -131,7 +131,7 @@ _gap_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a career coach. Identify skill gaps and create a learning roadmap.
 
 Return ONLY a JSON object with exactly these fields:
@@ -157,6 +157,9 @@ Rules:
 - priority must be one of: high, medium, low
 - All list values must be plain strings
 - missing_requirements lists must be specific and non-overlapping with duplicate strings
+- missing_hard_skills and missing_soft_skills must list ONLY genuine transferable skills (languages, frameworks,
+  tools, platforms, methodologies). NEVER list employer names, store/brand names, company-specific product names,
+  or multi-word phrases copied from the job ad that are not standard industry skills.
 - No markdown, no wrapper keys, just the JSON object""",
 )
 
@@ -212,11 +215,14 @@ def _sanitize_skill_gap_json(clean: str) -> str:
 
 
 async def analyze_gaps(ctx: AnalysisContext) -> SkillGapReport:
+    from src.utils.skill_validation import filter_skill_gap_report
+
     raw = (await _gap_agent.run("Identify skill gaps.", deps=ctx)).output
     clean = _sanitize_skill_gap_json(unwrap_llm_json(raw))
 
     try:
-        return SkillGapReport.model_validate_json(clean)
+        report = SkillGapReport.model_validate_json(clean)
+        return filter_skill_gap_report(ctx, report)
     except Exception:
         print(f"\n[DEBUG] Raw skill gap LLM output:\n{raw}\n")
         print(f"[DEBUG] After sanitize:\n{clean}\n")

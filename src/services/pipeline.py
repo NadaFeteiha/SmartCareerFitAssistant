@@ -7,7 +7,7 @@ from src.agents.keyword_optimizer import extract_top_jd_keywords
 from src.database.repository import get_user_skills, save_analysis
 from src.models.analysis import FitScore, FullAnalysis, SkillGapReport
 from src.models.resume import Skill
-from src.utils.resume_sections import inject_skill_into_markdown
+from src.utils.resume_sections import consolidate_small_skill_categories, inject_skill_into_markdown
 
 
 async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
@@ -50,7 +50,14 @@ async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, A
     skill_gaps = await analyze_gaps(ctx)
 
     print("Step 3/3: Generating resume and cover letter...")
-    optimized_resume = (await resume_writer.run("Rewrite this resume.", deps=ctx)).output
+    optimized_resume = (
+        await resume_writer.run(
+            "Rewrite this resume for the target job. Include a tailored ## SUMMARY section "
+            "(2–4 sentences) based on the resume and job description, then EXPERIENCE, EDUCATION, and SKILLS.",
+            deps=ctx,
+        )
+    ).output
+    optimized_resume = consolidate_small_skill_categories(optimized_resume)
     cover_letter = (await cover_letter_writer.run("Write a cover letter.", deps=ctx)).output
 
     result = FullAnalysis(

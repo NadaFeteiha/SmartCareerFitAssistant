@@ -89,7 +89,7 @@ def _styles() -> dict:
         ),
         "skill_label": ParagraphStyle(
             "SkillLabel", parent=base["Normal"],
-            fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+            fontName="Helvetica-Bold", fontSize=10, leading=13,
             textColor=DARK_GRAY,
         ),
         "skill_value": ParagraphStyle(
@@ -186,19 +186,19 @@ def _skills_2col_table(category_map: dict[str, list[str]], st: dict) -> Table:
         l_label, l_skills = l_entry
         r_label, r_skills = r_entry
 
-        # Join skills with comma and space, just like in the image
+        # Join skills with comma and space (clean, scannable — no bullets)
         l_val = ", ".join(l_skills)
         r_val = ", ".join(r_skills)
 
         rows.append([
-            Paragraph(l_label, st["skill_label"]) if l_label else Paragraph("", st["skill_label"]),
+            Paragraph(_md_to_xml(l_label), st["skill_label"]) if l_label else Paragraph("", st["skill_label"]),
             Paragraph(_md_to_xml(l_val), st["skill_value"]),
             Paragraph("", st["normal"]),   # spacer column
-            Paragraph(r_label, st["skill_label"]) if r_label else Paragraph("", st["skill_label"]),
+            Paragraph(_md_to_xml(r_label), st["skill_label"]) if r_label else Paragraph("", st["skill_label"]),
             Paragraph(_md_to_xml(r_val), st["skill_value"]),
         ])
 
-    t = Table(rows, colWidths=col_widths, spaceBefore=8, spaceAfter=12)
+    t = Table(rows, colWidths=col_widths, spaceBefore=4, spaceAfter=10)
     t.setStyle(TableStyle(style_cmds))
     return t
 
@@ -320,6 +320,18 @@ def _parse_resume(md_text: str, st: dict) -> list:
                     if skill:
                         category_map[current_cat].append(skill)
                     i += 1
+
+                # Comma-separated continuation lines (common after **Category:** on its own line)
+                elif current_cat and cur and not cur.startswith("##") and not cur.startswith("###"):
+                    for s in re.split(r'[,;]', cur):
+                        s = s.strip()
+                        if s:
+                            category_map[current_cat].append(s)
+                    i += 1
+
+                elif not cur:
+                    i += 1
+                    continue
 
                 else:
                     break
@@ -591,6 +603,15 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
                     if skill:
                         category_map[current_cat].append(skill)
                     i += 1
+                elif current_cat and cur and not cur.startswith("##") and not cur.startswith("###"):
+                    for s in re.split(r'[,;]', cur):
+                        s = s.strip()
+                        if s:
+                            category_map[current_cat].append(s)
+                    i += 1
+                elif not cur:
+                    i += 1
+                    continue
                 else:
                     break
 
@@ -604,7 +625,7 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
             while len(right_cats) < len(left_cats):
                 right_cats.append(("", []))
 
-            # 5-column table: label | value | spacer | label | value
+            # 5-column table: label | value | spacer | label | value (clean, minimal — like print resume)
             tbl = doc.add_table(rows=len(left_cats), cols=5)
             tbl.style = "Table Grid"
             tbl.autofit = False
@@ -615,23 +636,14 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
 
             for ri, ((ll, ls), (rl, rs)) in enumerate(zip(left_cats, right_cats)):
                 cells = tbl.rows[ri].cells
-                bg = "E0E7FF" if ri % 2 == 0 else "EEF2FF"
-                # label cells slightly darker
-                for ci in (0, 3):
-                    _set_cell_bg(cells[ci], "DBEAFE")
-                for ci in (1, 4):
-                    _set_cell_bg(cells[ci], bg)
-                # spacer col white
-                _set_cell_bg(cells[2], "FFFFFF")
-                for ci in range(5):
+                for cell in cells:
                     for edge in ("top", "bottom", "left", "right"):
-                        border_color = "CBD5E1" if ci != 2 else "FFFFFF"
-                        _set_cell_border(cells[ci], **{edge: border_color})
+                        _set_cell_border(cell, **{edge: "FFFFFF"})
 
                 def _fill(cell, label: str, skills: list[str], is_label: bool) -> None:
                     p = cell.paragraphs[0]
-                    p.paragraph_format.space_before = Pt(3)
-                    p.paragraph_format.space_after  = Pt(3)
+                    p.paragraph_format.space_before = Pt(4)
+                    p.paragraph_format.space_after  = Pt(4)
                     _para_add_inline(p, label if is_label else ", ".join(skills),
                                      bold=is_label, size=9,
                                      color="0F172A" if is_label else "1E293B")

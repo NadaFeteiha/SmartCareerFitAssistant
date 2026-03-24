@@ -7,7 +7,7 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from src.agents.utils import unwrap_llm_json
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 def _make_model() -> OpenAIModel:
@@ -24,7 +24,7 @@ _keyword_agent = Agent(
     _make_model(),
     output_type=str,
     retries=2,
-    model_settings={"max_tokens": 1500},
+    model_settings=completion_settings(1500),
     system_prompt="""You extract ATS-relevant keywords from job descriptions.
 
 Return ONLY a JSON object:

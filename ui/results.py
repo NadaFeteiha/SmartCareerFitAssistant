@@ -175,6 +175,30 @@ def __sync_resume_form():
     
     on_resume_markdown_changed()
 
+
+def __delete_resume_list_item(section_idx: int, item_idx: int) -> None:
+    """Remove one list entry (e.g. experience) after syncing widgets, then rebuild markdown."""
+    from src.utils.resume_parser import build_markdown_from_form, parse_markdown_to_form
+
+    __sync_resume_form()
+    form = st.session_state.parsed_resume_form
+    sections = form.get("sections", [])
+    if section_idx >= len(sections):
+        return
+    sec = sections[section_idx]
+    if sec.get("type") != "list":
+        return
+    items = sec.get("items", [])
+    if item_idx >= len(items):
+        return
+    items.pop(item_idx)
+    new_md = build_markdown_from_form(form)
+    st.session_state.resume_markdown_draft = new_md
+    st.session_state.parsed_resume_form = parse_markdown_to_form(new_md)
+    st.session_state._last_md_to_parse = new_md
+    on_resume_markdown_changed()
+
+
 def _render_resume_tab(result: FullAnalysis) -> None:
     st.caption("Edit your personal details and content below. Saving changes to **Skills** or **Experience** triggers a fit re-score.")
     col_edit, col_prev = st.columns(2)
@@ -232,7 +256,19 @@ def _render_resume_tab(result: FullAnalysis) -> None:
                         # Render list items (EXPERIENCE/EDUCATION/PROJECTS)
                         st.markdown(f"**{sec['heading']} Entries**")
                         for item_idx, item in enumerate(sec.get("items", [])):
-                            st.markdown(f"**Entry {item_idx + 1}**")
+                            row_h, row_del = st.columns([8, 1])
+                            with row_h:
+                                st.markdown(f"**Entry {item_idx + 1}**")
+                            with row_del:
+                                if sec.get("heading", "").strip().upper() == "EXPERIENCE":
+                                    if st.button(
+                                        "🗑️",
+                                        key=f"del_exp_{idx}_{item_idx}",
+                                        help="Delete this experience entry",
+                                        use_container_width=True,
+                                    ):
+                                        __delete_resume_list_item(idx, item_idx)
+                                        st.rerun()
                             
                             # Create grid for the fields
                             col1, col2 = st.columns(2)

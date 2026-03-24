@@ -90,7 +90,8 @@ def parse_section_content(heading: str, content: str) -> dict:
                 
                 # Start new category
                 if ":**" in line:
-                    current_category = line[2:-2].strip()  # Remove ** and :**
+                    _idx = line.index(":**")
+                    current_category = line[2:_idx].strip()
                 else:
                     current_category = line[2:-2].strip()  # Remove ** only
                 current_subskills = []
@@ -132,6 +133,28 @@ def parse_section_content(heading: str, content: str) -> dict:
             "type": "text",
             "content": content
         }
+
+
+def _append_parsed_section(parsed: dict, heading: str, content_lines: list[str]) -> None:
+    """Append one section; skip empty text blocks; merge consecutive duplicate ## SUMMARY."""
+    body = "\n".join(content_lines).strip()
+    section_data = parse_section_content(heading, body)
+    if section_data.get("type") == "text" and not section_data.get("content", "").strip():
+        return
+    if (
+        section_data.get("type") == "text"
+        and section_data.get("heading", "").strip().upper() == "SUMMARY"
+        and parsed["sections"]
+        and parsed["sections"][-1].get("type") == "text"
+        and parsed["sections"][-1].get("heading", "").strip().upper() == "SUMMARY"
+    ):
+        prev = parsed["sections"][-1]
+        c1 = prev.get("content", "").strip()
+        c2 = section_data.get("content", "").strip()
+        prev["content"] = "\n\n".join(x for x in (c1, c2) if x).strip()
+        return
+    parsed["sections"].append(section_data)
+
 
 def parse_markdown_to_form(md: str) -> dict:
     """Parses standard markdown resume header into a structured form dictionary."""
@@ -205,23 +228,29 @@ def parse_markdown_to_form(md: str) -> dict:
 
         i += 1
 
-    current_heading = "SUMMARY"
-    current_content = []
-    
+    # No implicit SUMMARY bucket: only create SUMMARY from explicit ## SUMMARY or orphan lines
+    # before the first ## (otherwise the first ## EXPERIENCE flushed a bogus empty SUMMARY).
+    current_heading: str | None = None
+    current_content: list[str] = []
+
     for line in lines[i:]:
         strip_line = line.strip()
         if strip_line.startswith("## "):
-            if current_content or current_heading != "SUMMARY":
-                section_data = parse_section_content(current_heading, "\n".join(current_content).strip())
-                parsed["sections"].append(section_data)
-            current_heading = strip_line[3:].strip()
-            current_content = []
+            new_heading = strip_line[3:].strip()
+            if current_heading is None:
+                orphan = "\n".join(current_content).strip()
+                if orphan:
+                    _append_parsed_section(parsed, "SUMMARY", current_content)
+                current_content = []
+            else:
+                _append_parsed_section(parsed, current_heading, current_content)
+                current_content = []
+            current_heading = new_heading
         else:
             current_content.append(line)
-            
-    if current_content or current_heading != "SUMMARY":
-        section_data = parse_section_content(current_heading, "\n".join(current_content).strip())
-        parsed["sections"].append(section_data)
+
+    if current_heading is not None:
+        _append_parsed_section(parsed, current_heading, current_content)
 
     return parsed
 

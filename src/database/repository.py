@@ -57,6 +57,9 @@ def get_user_skills(user_name: str) -> list[str]:
     if not user_name:
         return []
     conn = get_connection()
-    rows = conn.execute("SELECT skill_name FROM user_skills WHERE user_name = ?", (user_name.strip(),)).fetchall()
+    rows = conn.execute(
+        "SELECT skill_name FROM user_skills WHERE user_name = ? ORDER BY skill_name COLLATE NOCASE",
+        (user_name.strip(),),
+    ).fetchall()
     conn.close()
     return [r["skill_name"] for r in rows]

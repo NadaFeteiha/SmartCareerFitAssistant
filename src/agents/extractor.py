@@ -5,7 +5,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.agents.utils import unwrap_llm_json
 from src.models.resume import ResumeData
 from src.models.job import JobRequirements
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 def _make_model() -> OpenAIModel:
@@ -76,7 +76,7 @@ _resume_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a resume parser. Extract structured data from the resume text.
 
 Return ONLY a JSON object with exactly these fields:
@@ -130,7 +130,7 @@ _job_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a job description parser. Extract structured data.
 
 Return ONLY a JSON object with exactly these fields:

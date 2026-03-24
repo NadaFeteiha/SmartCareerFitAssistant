@@ -9,24 +9,31 @@ from src.models.analysis import FullAnalysis
 from src.models.resume import Skill
 from src.services.pipeline import recalculate_fit_and_gaps_sync
 from src.utils.resume_sections import inject_skill_into_markdown
+from src.utils.skill_validation import is_plausible_gap_skill
 from src.database.repository import add_user_skill
 
 
-def _build_skill_queue(result: FullAnalysis) -> list[tuple[str, str]]:
+def _build_skill_queue(result: FullAnalysis, ctx: AnalysisContext | None = None) -> list[tuple[str, str]]:
     seen: set[str] = set()
     out: list[tuple[str, str]] = []
     for s in result.skill_gaps.missing_hard_skills:
         t = (s or "").strip()
         k = t.lower()
-        if k and k not in seen:
-            seen.add(k)
-            out.append((t, "hard"))
+        if not k or k in seen:
+            continue
+        if not is_plausible_gap_skill(t, ctx):
+            continue
+        seen.add(k)
+        out.append((t, "hard"))
     for s in result.skill_gaps.missing_soft_skills:
         t = (s or "").strip()
         k = t.lower()
-        if k and k not in seen:
-            seen.add(k)
-            out.append((t, "soft"))
+        if not k or k in seen:
+            continue
+        if not is_plausible_gap_skill(t, ctx):
+            continue
+        seen.add(k)
+        out.append((t, "soft"))
     return out
 
 
@@ -121,7 +128,7 @@ def _finalize_skill_survey() -> None:
             update={"fit_score": new_fit, "skill_gaps": new_gaps}
         )
 
-        new_queue = _build_skill_queue(st.session_state.analysis_result)
+        new_queue = _build_skill_queue(st.session_state.analysis_result, ctx)
         answered = st.session_state.get("skill_survey_answered", set())
         unanswered = [(s, k) for s, k in new_queue if s.lower() not in answered]
 
@@ -199,7 +206,7 @@ def render_chat_assistant() -> None:
 
     # Post-analysis state
     if "skill_survey_queue" not in st.session_state:
-        queue = _build_skill_queue(result)
+        queue = _build_skill_queue(result, ctx)
         st.session_state.skill_survey_queue = queue
         st.session_state.skill_survey_index = 0
         st.session_state.skill_survey_finished = False
@@ -233,7 +240,10 @@ def render_chat_assistant() -> None:
             c1, c2 = st.columns([5, 1])
             c1.markdown("### 💬 Skill Check")
             c2.button("✖", on_click=toggle_chat, key="btn_close_post")
-            st.caption("Answer one skill at a time. Confirmed skills are appended under “Additional skills (self-confirmed)” on your optimized resume.")
+            st.caption(
+                "Answer one skill at a time. Confirmed skills are added under the best-matching skill category, "
+                "or under **Others** when a category would have fewer than three items."
+            )
             
             with st.container(height=400, border=False):
                 for msg in st.session_state.skill_chat:

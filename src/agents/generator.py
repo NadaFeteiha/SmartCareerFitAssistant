@@ -2,7 +2,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.agents.analyzer import AnalysisContext
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 def _make_model() -> OpenAIModel:
@@ -22,6 +22,7 @@ resume_writer = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=2,
+    model_settings=completion_settings(8000),
     system_prompt="""
     You are an expert resume writer.
         Rewrite the candidate's resume to be ATS-optimized for the target job.
@@ -37,15 +38,21 @@ resume_writer = Agent(
         8. Return the resume in structured Markdown format. Use exactly the following markdown headers:
            - `# [Candidate Name]` at the very top
            - Contact info separated by `|` right below the name using their actual details from the original resume (e.g., `123-456-7890 | email@example.com | linkedin.com/in/user`)
-           - `## [Section Name]` for main sections (e.g., `## EXPERIENCE`, `## EDUCATION`, `## SKILLS`)
+           - `## [Section Name]` for main sections
            - `### [Job Title] | [Company] | [Dates] | [Location]` for experience entries
            - `### [Degree] | [University] | [Dates] | [Location]` for education entries
            - `- [Bullet point]` for bullet points
-        9. For the SKILLS section, ALWAYS group skills into logical sub-categories instead of writing one long list. Use this format:
-           - `**[Category]**: [Skills separated by commas]` (e.g., `**Languages**: Python, Java`)
-           - Ensure categories make sense (e.g., Languages, Frameworks, Cloud & Tools, Soft Skills).
-        10. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume.
-        11. Include all relevant sections: EXPERIENCE, EDUCATION, and SKILLS at minimum.
+        9. SUMMARY (required): Immediately after the contact line, include `## SUMMARY` as the first body section (before EXPERIENCE). Write 2–4 tight sentences that:
+           - Align the candidate's real strengths and years/domain with the target role and company context from the job description
+           - Naturally weave in a few of the top ATS keywords where they reflect truth from the resume (do not claim skills or experience that are not in the original resume)
+           - Use confident, third-person or implied subject professional tone (no "I" if it sounds awkward; "Experienced …" / "Results-driven …" is fine)
+           - Do not repeat the job title verbatim as the only content; add concrete hooks from their background
+        10. Section order must be: `## SUMMARY`, then `## EXPERIENCE`, then `## EDUCATION`, then `## SKILLS` (add other sections like PROJECTS only if present in the source resume).
+        11. For the SKILLS section, ALWAYS group skills into logical sub-categories instead of writing one long list. Prefer this format (category on its own line; skills follow on the same line or the next line, comma-separated):
+           - `**[Category Label]:**` then skills such as `Python, Java, Kotlin` (e.g., `**Languages & Frameworks:**` then `Python, Java, TypeScript`)
+           - Use clear labels similar to: Languages & Frameworks, Backend & Databases, AI/ML, Cloud & DevOps, Tools & Practices — adapted to what the candidate actually has.
+        12. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume.
+        13. Include EXPERIENCE, EDUCATION, and SKILLS at minimum (plus SUMMARY as above).
         
         ABSOLUTELY NO FABRICATION: Your job is to reformat and optimize existing content ONLY.
         Do NOT create new experience, especially not at the target company.
@@ -81,6 +88,7 @@ cover_letter_writer = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=2,
+    model_settings=completion_settings(4000),
     system_prompt="""You are a professional cover letter writer.
 Write a tailored, concise cover letter (3-4 paragraphs).
 
