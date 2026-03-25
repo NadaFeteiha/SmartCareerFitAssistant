@@ -16,6 +16,24 @@ An AI-powered career tool that analyzes your resume against a job description, s
 
 ---
 
+## AI Agents (7)
+
+All agents are [PydanticAI](https://docs.pydantic.dev/latest/concepts/pydantic_ai/) `Agent` instances backed by a local [Ollama](https://ollama.com) model. They are orchestrated in order by `src/services/pipeline.py`.
+
+| # | Module | Agent (internal name) | Role |
+|---|--------|----------------------|------|
+| 1 | `extractor.py` | Resume extractor (`_resume_agent`) | Parses raw resume text into structured `ResumeData` (name, summary, skills, experience, education). |
+| 2 | `extractor.py` | Job extractor (`_job_agent`) | Parses the job posting into structured `JobRequirements` (title, keywords, responsibilities, required skills). |
+| 3 | `keyword_optimizer.py` | Keyword optimizer (`_keyword_agent`) | Pulls up to **10** high-value ATS keywords/phrases from the job description; merged with extractor keywords for resume optimization. |
+| 4 | `analyzer.py` | Fit scorer (`_scorer_agent`) | Produces `FitScore`: overall 0–100, sub-scores (skill match, experience alignment, keyword coverage), strengths, and explanation. |
+| 5 | `analyzer.py` | Gap analyzer (`_gap_agent`) | Produces `SkillGapReport`: missing hard/soft skills, structured missing requirements, and a prioritized learning roadmap. |
+| 6 | `generator.py` | Resume writer (`resume_writer`) | Rewrites the resume as ATS-oriented Markdown (no fabrication; aligns wording with the job and keywords). |
+| 7 | `generator.py` | Cover letter writer (`cover_letter_writer`) | Writes a tailored 3–4 paragraph cover letter for the target role and company. |
+
+**Flow:** extract resume → extract job → optimize keywords → (context) → score fit → analyze gaps → generate resume → generate cover letter.
+
+---
+
 ## Tech Stack
 
 - **UI**: [Streamlit](https://streamlit.io)
@@ -34,9 +52,11 @@ SmartCareerFitAssistant/
 ├── main.py                   # CLI entry point
 ├── src/
 │   ├── agents/
-│   │   ├── extractor.py      # Resume & job description parsers (LLM agents)
-│   │   ├── analyzer.py       # Fit scorer & skill gap analyzer
-│   │   └── generator.py      # Resume writer & cover letter writer
+│   │   ├── extractor.py       # 2 agents: resume + job parsers → structured schemas
+│   │   ├── keyword_optimizer.py  # 1 agent: top ATS keywords from the JD
+│   │   ├── analyzer.py        # 2 agents: fit scorer + skill gap / roadmap
+│   │   ├── generator.py       # 2 agents: optimized resume + cover letter
+│   │   └── utils.py           # Shared LLM output helpers
 │   ├── models/
 │   │   ├── resume.py         # ResumeData schema
 │   │   ├── job.py            # JobRequirements schema
@@ -135,22 +155,26 @@ Open `http://localhost:8501` in your browser.
 Resume Text + Job Description
         │
         ▼
-  [Extractor Agents]
+  [Extractor Agents]  (resume + job)
   ResumeData + JobRequirements
         │
         ▼
-  [Analyzer Agents]
+  [Keyword Optimizer Agent]
+  Merged keyword list for ATS targeting
+        │
+        ▼
+  [Analyzer Agents]  (scorer + gap analyzer)
   FitScore + SkillGapReport
         │
         ▼
-  [Generator Agents]
+  [Generator Agents]  (resume writer + cover letter writer)
   Optimized Resume + Cover Letter
         │
         ▼
   [SQLite Repository]       [Streamlit UI + PDF Export]
 ```
 
-Each stage uses a PydanticAI `Agent` backed by a local Ollama model. All agents run asynchronously and are orchestrated by `src/services/pipeline.py`.
+Seven PydanticAI `Agent` instances (see **AI Agents** above) share the same Ollama-backed model. The pipeline runs them in sequence via `src/services/pipeline.py` (async internally; Streamlit uses a sync wrapper).
 
 ---
 

@@ -143,10 +143,9 @@ def _finalize_skill_survey() -> None:
         confirmed = st.session_state.get("skill_survey_confirmed", [])
         new_gaps = _scrub_confirmed_gaps(new_gaps, confirmed)
 
-        # Ensure overall score does not decrease upon adding a confirmed skill
         if new_fit.overall < old_fit.overall:
             new_fit = new_fit.model_copy(update={"overall": old_fit.overall})
-            
+
         st.session_state.analysis_result = ar.model_copy(
             update={"fit_score": new_fit, "skill_gaps": new_gaps}
         )
@@ -156,7 +155,12 @@ def _finalize_skill_survey() -> None:
 
         new_queue = _build_skill_queue(st.session_state.analysis_result, ctx)
         answered = st.session_state.get("skill_survey_answered", set())
-        unanswered = [(s, k) for s, k in new_queue if s.lower() not in answered]
+        already_queued = {s.lower() for s, _ in st.session_state.skill_survey_queue}
+        unanswered = [
+            (s, k)
+            for s, k in new_queue
+            if s.lower() not in answered and s.lower() not in already_queued
+        ]
 
         if unanswered:
             st.session_state.skill_survey_queue.extend(unanswered)
@@ -247,7 +251,8 @@ def render_chat_assistant() -> None:
                 ) + (
                     "I'll go through each **missing skill** from the analysis. "
                     "If you actually have it, say **Yes** and I'll add it to your optimized resume. "
-                    "When you finish answering, I'll **recalculate your fit score** and update gaps."
+                    "When you **finish** all questions, I'll **recalculate your fit score** and update gaps; "
+                    "if the model finds more missing skills, I'll ask about those next."
                     if queue else "You have no missing skills to verify. Great job!"
                 ),
             }
