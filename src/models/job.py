@@ -1,10 +1,23 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
 
 
 class RequiredSkill(BaseModel):
     name: str
-    importance: str = Field(description="'required' or 'preferred'")
+    importance: Literal["required", "preferred"]
     category: str = ""
+
+    @field_validator("importance", mode="before")
+    @classmethod
+    def normalize_importance(cls, v: object) -> str:
+        """Coerce common extractor / LLM variants to allowed literals."""
+        if v is None:
+            return "required"
+        s = str(v).strip().lower()
+        if s in ("preferred", "optional", "nice to have", "nice-to-have", "nice_to_have", "desirable"):
+            return "preferred"
+        return "required"
 
 
 class JobRequirements(BaseModel):

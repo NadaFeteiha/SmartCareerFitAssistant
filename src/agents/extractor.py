@@ -1,33 +1,24 @@
 import json
+import re
+
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+from src.agents.base import make_llm_model
 from src.agents.utils import unwrap_llm_json
-from src.models.resume import ResumeData
+from src.config import completion_settings
 from src.models.job import JobRequirements
-from src.config import completion_settings, settings
+from src.models.resume import ResumeData
 
+EXTRACT_RESUME_PROMPT_VERSION = "v1.0"
+EXTRACT_JOB_PROMPT_VERSION = "v1.0"
 
-def _make_model() -> OpenAIModel:
-    return OpenAIModel(
-        settings.ollama_model,
-        provider=OpenAIProvider(
-            base_url=settings.ollama_base_url,
-            api_key="ollama",
-        ),
-    )
-
-
-def _unwrap_tool_call(raw: str) -> str:
-    """Unwrap llama3.2 tool-call envelopes to raw JSON data."""
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict) and "parameters" in parsed:
-            return json.dumps(parsed["parameters"])
-        # Already flat JSON — return as-is
-        return raw
-    except json.JSONDecodeError:
-        return raw
+_extractor_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
 
 
 def _sanitize_job_requirements(raw: str) -> str:
@@ -50,7 +41,6 @@ def _sanitize_job_requirements(raw: str) -> str:
             data["required_skills"][idx] = {"name": str(skill), "importance": "required", "category": ""}
             continue
 
-        # Ensure fields exist and are strings
         name = skill.get("name")
         importance = skill.get("importance")
         category = skill.get("category")
@@ -71,106 +61,77 @@ def _sanitize_job_requirements(raw: str) -> str:
     return json.dumps(data)
 
 
-# --- Resume extractor ---
 _resume_agent = Agent(
-    _make_model(),
-    output_type=str,   # Get raw string first, parse manually
-    retries=3,
+    make_llm_model(),
+    output_type=str,
+    retries=1,
     model_settings=completion_settings(4000),
-    system_prompt="""You are a resume parser. Extract structured data from the resume text.
+    system_prompt=f"""You are a resume parser. Extract structured data from the resume text.
+(prompt_version={EXTRACT_RESUME_PROMPT_VERSION})
 
 Return ONLY a JSON object with exactly these fields:
-{
+{{
   "name": "full name as string",
   "email": "email or empty string",
   "summary": "1-2 sentence professional summary",
   "education": ["degree and school as string"],
   "skills": [
-    {"name": "skill name", "category": "programming|data|soft_skill|other", "proficiency": "beginner|intermediate|advanced"}
+    {{"name": "skill name", "category": "programming|data|soft_skill|other", "proficiency": "beginner|intermediate|advanced"}}
   ],
   "experiences": [
-    {
+    {{
       "title": "job title",
       "company": "company name",
       "duration": "date range",
       "highlights": ["achievement 1", "achievement 2"]
-    }
+    }}
   ]
-}
+}}
 
 No markdown. No explanation. No wrapper keys. Just the JSON object.""",
 )
 
 
-
+@_extractor_retry
 async def extract_resume(text: str) -> ResumeData:
     """Run the resume extractor and validate the output as ResumeData."""
-    import re
-    
-    last_error = None
-    for attempt in range(3):
-        raw = (await _resume_agent.run(text)).output
-        clean = unwrap_llm_json(raw)
-        
-        # Repair common JSON errors like trailing commas
-        clean = re.sub(r',\s*([\]}])', r'\1', clean)
-
-        try:
-            return ResumeData.model_validate_json(clean)
-        except Exception as e:
-            last_error = e
-            print(f"[DEBUG] extract_resume attempt {attempt + 1} failed: {e}")
-            
-    print(f"\n[DEBUG] Raw resume LLM output (final failure):\n{raw}\n")
-    raise last_error
+    raw = (await _resume_agent.run(text)).output
+    clean = re.sub(r",\s*([\]}])", r"\1", unwrap_llm_json(raw))
+    return ResumeData.model_validate_json(clean)
 
 
-# --- Job description extractor ---
 _job_agent = Agent(
-    _make_model(),
-    output_type=str,   # Get raw string first, parse manually
-    retries=3,
+    make_llm_model(),
+    output_type=str,
+    retries=1,
     model_settings=completion_settings(4000),
-    system_prompt="""You are a job description parser. Extract structured data.
+    system_prompt=f"""You are a job description parser. Extract structured data.
+(prompt_version={EXTRACT_JOB_PROMPT_VERSION})
 
 Return ONLY a JSON object with exactly these fields:
-{
+{{
   "title": "job title",
   "company": "company name or empty string",
   "experience_years": 0,
   "keywords": ["keyword1", "keyword2"],
   "responsibilities": ["responsibility 1", "responsibility 2"],
   "required_skills": [
-    {"name": "skill name", "importance": "required|preferred", "category": "programming|data|soft_skill|other"}
+    {{"name": "skill name", "importance": "required|preferred", "category": "programming|data|soft_skill|other"}}
   ]
-}
+}}
 
 No markdown. No explanation. No wrapper keys. Just the JSON object.""",
 )
 
 
+@_extractor_retry
 async def extract_job(text: str) -> JobRequirements:
     """Run the job extractor and validate the output as JobRequirements."""
-    import re
-    
-    last_error = None
-    for attempt in range(3):
-        raw = (await _job_agent.run(text)).output
-        
-        # Basic raw string trailing comma repair before sanitize
-        raw_repaired = re.sub(r',\s*([\]}])', r'\1', raw)
-        clean = _sanitize_job_requirements(raw_repaired)
-
-        try:
-            return JobRequirements.model_validate_json(clean)
-        except Exception as e:
-            last_error = e
-            print(f"[DEBUG] extract_job attempt {attempt + 1} failed: {e}")
-            
-    print(f"\n[DEBUG] Raw JD LLM output (final failure):\n{raw}\n")
-    raise last_error
+    raw = (await _job_agent.run(text)).output
+    raw_repaired = re.sub(r",\s*([\]}])", r"\1", raw)
+    clean = _sanitize_job_requirements(raw_repaired)
+    return JobRequirements.model_validate_json(clean)
 
 
-# Keep these names for backward compatibility with pipeline.py
 resume_extractor = _resume_agent
 job_extractor = _job_agent

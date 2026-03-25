@@ -32,7 +32,7 @@ def parse_section_content(heading: str, content: str) -> dict:
             end_date = ""
             if date:
                 # Handle formats like "Jan 2024 - Present", "2022-2024", "2022 - Current"
-                if " - " in date or " - " in date or "–" in date:
+                if " - " in date or " – " in date or "–" in date or "—" in date:
                     # Replace different dash types
                     clean_date = date.replace("–", "-").replace(" — ", "-").replace(" – ", "-")
                     date_parts = clean_date.split("-")
@@ -70,11 +70,11 @@ def parse_section_content(heading: str, content: str) -> dict:
     # SKILLS section
     elif heading_upper == "SKILLS":
         items = []
-        lines = content.split("\n")
+        skill_lines = content.split("\n")
         current_category = ""
         current_subskills = []
         
-        for line in lines:
+        for line in skill_lines:
             line = line.strip()
             if not line:
                 continue
@@ -177,10 +177,10 @@ def parse_markdown_to_form(md: str) -> dict:
 
     while i < len(lines):
         line = lines[i].strip()
-        
+
         if not line:
             if saw_contact:
-                break # Body starts after contact line
+                break
             i += 1
             continue
 
@@ -189,41 +189,76 @@ def parse_markdown_to_form(md: str) -> dict:
             saw_name = True
             i += 1
             continue
-            
-        if saw_name and not saw_title and not saw_contact and not line.startswith("#"):
-            is_contact = (
-                "@" in line or "linkedin" in line.lower()
-                or "github" in line.lower() or "portfolio" in line.lower() or "|" in line
-                or re.search(r'\+?\d[\d\s\-().]{6,}', line)
-            )
-            if not is_contact:
-                parsed["title"] = line
-                saw_title = True
-                i += 1
-                continue
-                
-        if saw_name and not saw_contact and not line.startswith("#"):
-            # Parse contact line components
-            parts = [p.strip() for p in line.split("|")]
-            for p in parts:
-                lower_p = p.lower()
-                if "@" in p:
-                    parsed["email"] = p
-                elif "linkedin" in lower_p:
-                    parsed["linkedin"] = p
-                elif "github" in lower_p or "portfolio" in lower_p or "http" in lower_p:
-                    parsed["portfolio"] = p
-                elif re.search(r'\+?\d[\d\s\-().]{6,}', p):
-                    parsed["phone"] = p
-                else:
-                    parsed["location"] = p
-                    
-            saw_contact = True
+
+        if not saw_name:
+            if line.startswith("## "):
+                break
             i += 1
+            continue
+
+        if line.startswith("## "):
             break
-            
-        # Fallback if no contact line is found before the first real section
-        if not saw_name and line.startswith("## "):
+
+        if not saw_contact:
+            j = i
+            if not saw_title:
+                ln0 = lines[j].strip()
+                is_contact0 = (
+                    "@" in ln0
+                    or "linkedin" in ln0.lower()
+                    or "github" in ln0.lower()
+                    or "portfolio" in ln0.lower()
+                    or "|" in ln0
+                    or re.search(r"\+?\d[\d\s\-().]{6,}", ln0)
+                )
+                if ln0 and not is_contact0:
+                    parsed["title"] = ln0
+                    saw_title = True
+                    j += 1
+
+            contact_lines: list[str] = []
+            while j < len(lines):
+                ln = lines[j].strip()
+                if not ln:
+                    j += 1
+                    continue
+                if ln.startswith("##"):
+                    break
+                if ln.startswith("# ") and not ln.startswith("##"):
+                    break
+                is_contact = (
+                    "@" in ln
+                    or "linkedin" in ln.lower()
+                    or "github" in ln.lower()
+                    or "portfolio" in ln.lower()
+                    or "|" in ln
+                    or re.search(r"\+?\d[\d\s\-().]{6,}", ln)
+                )
+                if is_contact:
+                    contact_lines.append(ln)
+                    j += 1
+                    if len(contact_lines) >= 3:
+                        break
+                else:
+                    break
+
+            if contact_lines:
+                combined = " | ".join(contact_lines)
+                parts = [p.strip() for p in combined.split("|") if p.strip()]
+                for p in parts:
+                    lower_p = p.lower()
+                    if "@" in p:
+                        parsed["email"] = p
+                    elif "linkedin" in lower_p:
+                        parsed["linkedin"] = p
+                    elif "github" in lower_p or "portfolio" in lower_p or "http" in lower_p:
+                        parsed["portfolio"] = p
+                    elif re.search(r"\+?\d[\d\s\-().]{6,}", p):
+                        parsed["phone"] = p
+                    else:
+                        parsed["location"] = p
+                saw_contact = True
+            i = j
             break
 
         i += 1

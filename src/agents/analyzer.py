@@ -1,52 +1,40 @@
 import json
-from dataclasses import dataclass
+import logging
+
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
-from src.models.resume import ResumeData
-from src.models.job import JobRequirements
-from src.models.analysis import FitScore, SkillGapReport
+
+from src.agents.base import make_llm_model
+from src.agents.context import AnalysisContext
+from src.agents.token_budget import truncate_to_token_budget
 from src.agents.utils import unwrap_llm_json
 from src.config import completion_settings, settings
+from src.models.analysis import FitScore, SkillGapReport
 
+logger = logging.getLogger(__name__)
 
-@dataclass
-class AnalysisContext:
-    resume_text: str
-    job_text: str
-    resume_data: ResumeData
-    job_data: JobRequirements
-
-
-def _make_model() -> OpenAIModel:
-    return OpenAIModel(
-        settings.ollama_model,
-        provider=OpenAIProvider(
-            base_url=settings.ollama_base_url,
-            api_key="ollama",
-        ),
-    )
-
+SCORER_PROMPT_VERSION = "v1.1"
+GAP_ANALYZER_PROMPT_VERSION = "v1.1"
 
 # ── Scorer ────────────────────────────────────────────────────────────────────
 
 _scorer_agent = Agent(
-    _make_model(),
+    make_llm_model(),
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
     model_settings=completion_settings(4000),
-    system_prompt="""You are a career analyst. Score the candidate's fit for a job.
+    system_prompt=f"""You are a career analyst. Score the candidate's fit for a job.
+(prompt_version={SCORER_PROMPT_VERSION})
 
 Return ONLY a JSON object with exactly these fields:
-{
+{{
     "overall": 75,
     "skill_match": 30,
     "experience_alignment": 25,
     "keyword_coverage": 20,
     "strengths": ["strength 1", "strength 2"],
     "explanation": "A detailed 2-3 sentence breakdown explaining exactly why the score was given, what specific experience/skills are missing, and the primary reasons the score wasn't higher."
-}
+}}
 
 Rules:
 - overall must equal skill_match + experience_alignment + keyword_coverage
@@ -56,17 +44,23 @@ Rules:
 - No markdown, no wrapper keys, just the JSON object""",
 )
 
+
 @_scorer_agent.system_prompt
 def _scorer_context(ctx: RunContext[AnalysisContext]) -> str:
     candidate_skills = [s.name for s in ctx.deps.resume_data.skills]
     required_skills = [s.name for s in ctx.deps.job_data.required_skills]
-    body = (ctx.deps.resume_text or "")[:12000]
+    body = truncate_to_token_budget(
+        (ctx.deps.resume_text or ""),
+        settings.scorer_resume_excerpt_tokens,
+    )
+    extra = ctx.deps.skill_match_summary.strip()
+    skill_block = f"\n{extra}\n" if extra else ""
     return f"""
 Candidate skills (structured): {candidate_skills}
 Required skills: {required_skills}
 Job title: {ctx.deps.job_data.title}
 Candidate summary: {ctx.deps.resume_data.summary}
-
+{skill_block}
 User-edited resume body (markdown; use for keyword and experience judgment):
 ---
 {body}
@@ -86,7 +80,6 @@ def _sanitize_fit_score(raw: str) -> str:
     if not isinstance(data, dict):
         return clean
 
-    # Ensure required fields exist and have correct types
     if "strengths" not in data or data["strengths"] in (None, ""):
         data["strengths"] = []
     elif isinstance(data["strengths"], str):
@@ -102,12 +95,26 @@ def _sanitize_fit_score(raw: str) -> str:
             return min_val
         return max(min_val, min(max_val, iv))
 
+    try:
+        raw_overall_before = int(data.get("overall", 0))
+    except Exception:
+        raw_overall_before = None
+
     data["skill_match"] = _clamp_int(data.get("skill_match", 0), 0, 40)
     data["experience_alignment"] = _clamp_int(data.get("experience_alignment", 0), 0, 30)
     data["keyword_coverage"] = _clamp_int(data.get("keyword_coverage", 0), 0, 30)
 
-    # Ensure overall matches the sum of parts to satisfy the model constraint.
-    data["overall"] = data["skill_match"] + data["experience_alignment"] + data["keyword_coverage"]
+    computed = data["skill_match"] + data["experience_alignment"] + data["keyword_coverage"]
+    data["overall"] = computed
+
+    if raw_overall_before is not None and raw_overall_before != computed:
+        logger.warning(
+            "Fit score overall adjusted after clamping: LLM reported overall=%s, recomputed sum=%s "
+            "(scorer_prompt=%s)",
+            raw_overall_before,
+            computed,
+            SCORER_PROMPT_VERSION,
+        )
 
     return json.dumps(data)
 
@@ -127,31 +134,32 @@ async def score_candidate(ctx: AnalysisContext) -> FitScore:
 # ── Gap Analyzer ──────────────────────────────────────────────────────────────
 
 _gap_agent = Agent(
-    _make_model(),
+    make_llm_model(),
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
     model_settings=completion_settings(4000),
-    system_prompt="""You are a career coach. Identify skill gaps and create a learning roadmap.
+    system_prompt=f"""You are a career coach. Identify skill gaps and create a learning roadmap.
+(prompt_version={GAP_ANALYZER_PROMPT_VERSION})
 
 Return ONLY a JSON object with exactly these fields:
-{
+{{
   "missing_hard_skills": ["skill1", "skill2"],
   "missing_soft_skills": ["skill1"],
-  "missing_requirements": {
+  "missing_requirements": {{
     "missing_skills": ["Specific required skills not evidenced on resume"],
     "missing_experience": ["JD responsibilities or experience themes not shown in work history"],
     "missing_keywords": ["Important JD terms/keywords absent from resume text"]
-  },
+  }},
   "learning_roadmap": [
-    {
+    {{
       "skill": "Kubernetes",
       "priority": "high",
       "reason": "Required by the job posting",
       "suggestion": "Take the official Kubernetes fundamentals course"
-    }
+    }}
   ]
-}
+}}
 
 Rules:
 - priority must be one of: high, medium, low
@@ -163,16 +171,23 @@ Rules:
 - No markdown, no wrapper keys, just the JSON object""",
 )
 
+
 @_gap_agent.system_prompt
 def _gap_context(ctx: RunContext[AnalysisContext]) -> str:
     candidate_skills = [s.name for s in ctx.deps.resume_data.skills]
     required_skills = [s.name for s in ctx.deps.job_data.required_skills]
-    resume_snip = (ctx.deps.resume_text or "")[:8000]
+    resume_snip = truncate_to_token_budget(
+        (ctx.deps.resume_text or ""),
+        settings.gap_resume_excerpt_tokens,
+    )
+    extra = ctx.deps.skill_match_summary.strip()
+    skill_block = f"\n{extra}\n" if extra else ""
     return f"""
 Candidate skills: {candidate_skills}
 Required skills: {required_skills}
 Job title: {ctx.deps.job_data.title}
 Job responsibilities (if known from JD): {ctx.deps.job_data.responsibilities}
+{skill_block}
 Resume excerpt:
 ---
 {resume_snip}
@@ -229,6 +244,5 @@ async def analyze_gaps(ctx: AnalysisContext) -> SkillGapReport:
         raise
 
 
-# Keep old names so existing imports don't break
 scorer = _scorer_agent
 gap_analyzer = _gap_agent

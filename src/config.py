@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     # Optional seed for OpenAI-compatible backends that support it (e.g. some Ollama builds). Set in .env for strict runs.
     llm_seed: int | None = None
 
+    # Estimated token caps for prompt excerpts (see ``src/agents/token_budget``).
+    scorer_resume_excerpt_tokens: int = 3000
+    gap_resume_excerpt_tokens: int = 2500
+    keyword_optimizer_jd_tokens: int = 3500
+    resume_writer_source_tokens: int = 12000
+    cover_letter_resume_excerpt_tokens: int = 1500
+    cover_letter_jd_responsibilities_tokens: int = 800
+
+    # Optional embedding-based skill hints (Ollama /api/embeddings).
+    skill_embedding_enabled: bool = True
+    skill_embedding_similarity_floor: float = 0.72
+    skill_embedding_max_skill_terms: int = 40
+    skill_embedding_max_pairs_in_prompt: int = 12
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

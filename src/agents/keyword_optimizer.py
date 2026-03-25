@@ -3,32 +3,24 @@
 import json
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
+from src.agents.base import make_llm_model
+from src.agents.token_budget import truncate_to_token_budget
 from src.agents.utils import unwrap_llm_json
 from src.config import completion_settings, settings
 
-
-def _make_model() -> OpenAIModel:
-    return OpenAIModel(
-        settings.ollama_model,
-        provider=OpenAIProvider(
-            base_url=settings.ollama_base_url,
-            api_key="ollama",
-        ),
-    )
-
+KEYWORD_AGENT_PROMPT_VERSION = "v1.0"
 
 _keyword_agent = Agent(
-    _make_model(),
+    make_llm_model(),
     output_type=str,
     retries=2,
     model_settings=completion_settings(1500),
-    system_prompt="""You extract ATS-relevant keywords from job descriptions.
+    system_prompt=f"""You extract ATS-relevant keywords from job descriptions.
+(prompt_version={KEYWORD_AGENT_PROMPT_VERSION})
 
 Return ONLY a JSON object:
-{ "top_keywords": ["keyword1", "keyword2", ...] }
+{{ "top_keywords": ["keyword1", "keyword2", ...] }}
 
 Rules:
 - Exactly 10 distinct keywords or short phrases (1–3 words each)
@@ -40,7 +32,8 @@ Rules:
 
 async def extract_top_jd_keywords(job_text: str) -> list[str]:
     """Return up to 10 high-value keywords for resume optimization."""
-    raw = (await _keyword_agent.run(f"Job description:\n{job_text[:12000]}")).output
+    snippet = truncate_to_token_budget(job_text or "", settings.keyword_optimizer_jd_tokens)
+    raw = (await _keyword_agent.run(f"Job description:\n{snippet}")).output
     clean = unwrap_llm_json(raw)
     try:
         data = json.loads(clean)

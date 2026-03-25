@@ -1,4 +1,5 @@
-from .analyzer import AnalysisContext, gap_analyzer, scorer
+from .analyzer import gap_analyzer, scorer
+from .context import AnalysisContext
 from .extractor import job_extractor, resume_extractor
 from .generator import cover_letter_writer, resume_writer
 from .keyword_optimizer import extract_top_jd_keywords

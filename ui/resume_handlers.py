@@ -17,6 +17,15 @@ def on_resume_markdown_changed() -> None:
     if fp == st.session_state.get("_resume_score_fp"):
         return
     st.session_state.pop("_rescore_error", None)
+    rescore_cache = st.session_state.setdefault("_rescore_cache", {})
+    cached = rescore_cache.get(fp)
+    if cached is not None:
+        ar = st.session_state.analysis_result
+        st.session_state.analysis_result = ar.model_copy(
+            update={"fit_score": cached, "optimized_resume": md}
+        )
+        st.session_state["_resume_score_fp"] = fp
+        return
     st.session_state["_resume_score_fp"] = fp
     try:
         new_fit = rescore_resume_draft_sync(ctx, md)
@@ -24,6 +33,7 @@ def on_resume_markdown_changed() -> None:
         st.session_state.analysis_result = ar.model_copy(
             update={"fit_score": new_fit, "optimized_resume": md}
         )
+        rescore_cache[fp] = new_fit
     except Exception as e:
         st.session_state["_rescore_error"] = str(e)
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
+
 import streamlit as st
 
-from src.agents.analyzer import AnalysisContext
+from src.agents.context import AnalysisContext
 from src.models.analysis import FullAnalysis, SkillGapReport
 from src.models.resume import Skill
 from src.services.pipeline import recalculate_fit_and_gaps_sync
@@ -70,7 +72,7 @@ def _scrub_confirmed_gaps(new_gaps: SkillGapReport, confirmed: list[str]) -> Ski
 
 
 def _advance_skill_yes() -> None:
-    ctx = st.session_state.get("pipeline_context")
+    ctx = copy.deepcopy(st.session_state.get("pipeline_context"))
     if ctx is None:
         return
     q = st.session_state.skill_survey_queue
@@ -108,6 +110,7 @@ def _advance_skill_yes() -> None:
     st.session_state._last_md_to_parse = new_md
 
     st.session_state.skill_survey_index = idx + 1
+    st.session_state["pipeline_context"] = ctx
 
 
 def _advance_skill_no() -> None:
@@ -130,7 +133,7 @@ def _advance_skill_no() -> None:
 
 
 def _finalize_skill_survey() -> None:
-    ctx = st.session_state.get("pipeline_context")
+    ctx = copy.deepcopy(st.session_state.get("pipeline_context"))
     if ctx is None:
         st.session_state.skill_survey_finished = True
         return
@@ -139,6 +142,7 @@ def _finalize_skill_survey() -> None:
         old_fit = ar.fit_score
         ctx.resume_text = ar.optimized_resume
         new_fit, new_gaps = recalculate_fit_and_gaps_sync(ctx)
+        st.session_state["pipeline_context"] = ctx
 
         confirmed = st.session_state.get("skill_survey_confirmed", [])
         new_gaps = _scrub_confirmed_gaps(new_gaps, confirmed)

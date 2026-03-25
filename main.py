@@ -4,7 +4,11 @@ Usage: uv run python main.py
 """
 import asyncio
 from src.database.database import init_db
-from src.services.pipeline import run_pipeline
+from src.services.pipeline import (
+    finalize_resume_cover_letter_and_save_sync,
+    run_pipeline_through_gap_analysis_sync,
+    stream_optimized_resume_for_streamlit,
+)
 
 SAMPLE_RESUME = """
 John Smith
@@ -52,7 +56,11 @@ Responsibilities:
 async def main():
     init_db()
     print("Running pipeline with sample data...\n")
-    result, _ = await run_pipeline(SAMPLE_RESUME, SAMPLE_JD)
+    ctx, fit_score, skill_gaps = run_pipeline_through_gap_analysis_sync(SAMPLE_RESUME, SAMPLE_JD)
+    full_resume_md = "".join(stream_optimized_resume_for_streamlit(ctx))
+    result = finalize_resume_cover_letter_and_save_sync(
+        ctx, fit_score, skill_gaps, full_resume_md
+    )
 
     print(f"\n{'='*50}")
     print(f"FIT SCORE: {result.fit_score.overall}/100")

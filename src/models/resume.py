@@ -1,5 +1,3 @@
-from pydantic import BaseModel, Field
-
 """
 This class represents the structured extraction from a raw resume.
 It is the output of the resume parsing step, and the input to the matching step.
@@ -7,6 +5,8 @@ It is the output of the resume parsing step, and the input to the matching step.
 it includes the candidate's name, contact information, skills, work experiences, education, and a summary.
 using this structured data, we can compare it against the structured job requirements to determine how well the candidate matches the job.
 """
+
+from pydantic import BaseModel, Field
 
 class Skill(BaseModel):
     name: str

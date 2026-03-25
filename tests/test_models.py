@@ -98,6 +98,33 @@ def test_fit_score_valid():
     assert score.overall == 75
     assert score.skill_match + score.experience_alignment + score.keyword_coverage == 75
 
+
+def test_fit_score_overall_synced_from_subscores():
+    score = FitScore(
+        overall=50,
+        skill_match=30,
+        experience_alignment=25,
+        keyword_coverage=20,
+        strengths=[],
+        explanation="",
+    )
+    assert score.overall == 75
+
+
+def test_required_skill_importance_normalized():
+    sk = RequiredSkill(name="Docker", importance="OPTIONAL", category="devops")
+    assert sk.importance == "preferred"
+
+
+def test_learning_item_priority_normalized():
+    item = LearningItem(
+        skill="K8s",
+        priority="HIGH",
+        reason="Needed",
+        suggestion="Course",
+    )
+    assert item.priority == "high"
+
 def test_fit_score_bounds():
     with pytest.raises(ValidationError):
         FitScore(

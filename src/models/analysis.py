@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class FitScore(BaseModel):
@@ -10,12 +12,34 @@ class FitScore(BaseModel):
     strengths: list[str]
     explanation: str
 
+    @model_validator(mode="after")
+    def sync_overall_with_sub_scores(self) -> "FitScore":
+        computed = self.skill_match + self.experience_alignment + self.keyword_coverage
+        self.overall = min(computed, 100)
+        return self
+
 
 class LearningItem(BaseModel):
     skill: str
-    priority: str = Field(description="'high', 'medium', or 'low'")
+    priority: Literal["high", "medium", "low"]
     reason: str
     suggestion: str
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, v: object) -> str:
+        if v is None:
+            return "medium"
+        s = str(v).strip().lower()
+        if s in ("high", "medium", "low"):
+            return s
+        if s in ("critical", "urgent", "highest"):
+            return "high"
+        if s in ("med", "normal", "mid"):
+            return "medium"
+        if s in ("lo", "minimum"):
+            return "low"
+        return "medium"
 
 
 class MissingRequirements(BaseModel):

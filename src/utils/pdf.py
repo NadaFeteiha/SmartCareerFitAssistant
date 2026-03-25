@@ -2,7 +2,10 @@
 
 from io import BytesIO
 from datetime import datetime
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
@@ -751,19 +754,13 @@ def create_cover_letter_pdf(cover_letter_content: str,
 
     story = [Paragraph(datetime.now().strftime("%B %d, %Y"), date_style)]
     in_sig = False
-    line_count = 0
-    max_lines = 50  # Approximate limit for single page
 
     for line in cover_letter_content.splitlines():
         s = line.strip()
         if not s:
             story.append(Spacer(1, 0.05 * inch))  # Smaller spacer
             continue
-        
-        line_count += 1
-        if line_count > max_lines:
-            break  # Stop to prevent overflow to second page
-            
+
         if any(s.lower().startswith(kw) for kw in
                ("sincerely", "best regards", "regards", "thank you", "yours truly")):
             story.append(Spacer(1, 0.2 * inch))  # Smaller spacer
@@ -774,6 +771,13 @@ def create_cover_letter_pdf(cover_letter_content: str,
             in_sig = False
         else:
             story.append(Paragraph(_md_to_xml(s), body_style))
+
+    if len(story) > 40:
+        logger.warning(
+            "Cover letter may overflow a single page (%d story elements). "
+            "Consider shortening the content.",
+            len(story),
+        )
 
     doc.build(story)
     buffer.seek(0)

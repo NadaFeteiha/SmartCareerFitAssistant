@@ -7,20 +7,147 @@ from typing import Any
 
 from src.models.analysis import SkillGapReport
 
-# Common tech / methodology tokens — multi-word “skills” must hit one of these to pass without company match
-_TECH_MARKERS = re.compile(
-    r"\b("
-    r"python|java|javascript|typescript|sql|aws|azure|gcp|google\s+cloud|docker|kubernetes|k8s|react|node\.?js|angular|vue|"
-    r"svelte|next\.?js|graphql|rest|grpc|api|json|xml|yaml|linux|unix|bash|powershell|spring|flask|django|fastapi|"
-    r"mongodb|postgres|mysql|mariadb|redis|elasticsearch|kafka|tensorflow|pytorch|keras|spark|pandas|numpy|"
-    r"scikit|sklearn|ml|nlp|opencv|langchain|rust|go\b|golang|kotlin|swift|php|ruby|scala|elixir|c\+\+|csharp|c#|\.net|dotnet|"
-    r"terraform|ansible|helm|jenkins|ci/cd|devops|git|github|gitlab|jira|agile|scrum|oauth|jwt|ssl|tcp|http|https|"
-    r"html|css|sass|less|webpack|vite|jest|pytest|junit|gradle|maven|npm|yarn|figma|sketch|oauth|ldap|ssl|tls|"
-    r"kubernetes|prometheus|grafana|lambda|ec2|s3|nosql|oracle|sqlite|android|ios|jetpack|compose|"
-    r"machine\s+learning|deep\s+learning|data\s+science|computer\s+vision|nlp|etl|bi\b|tableau|power\s+bi|excel|vba"
-    r")\b",
-    re.I,
-)
+_TECH_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "languages": (
+        "python",
+        "java",
+        "javascript",
+        "typescript",
+        "kotlin",
+        "swift",
+        "rust",
+        "go\\b",
+        "golang",
+        "scala",
+        "php",
+        "ruby",
+        "elixir",
+        "c\\+\\+",
+        "c#",
+        "csharp",
+        "\\.net",
+        "dotnet",
+    ),
+    "web": (
+        "react",
+        "angular",
+        "vue",
+        "svelte",
+        "next\\.?js",
+        "node\\.?js",
+        "html",
+        "css",
+        "sass",
+        "graphql",
+        "rest",
+        "grpc",
+        "fastapi",
+        "flask",
+        "django",
+        "spring",
+        "express",
+    ),
+    "data": (
+        "sql",
+        "mysql",
+        "postgres",
+        "mongodb",
+        "redis",
+        "kafka",
+        "elasticsearch",
+        "sqlite",
+        "nosql",
+        "oracle",
+        "etl",
+        "spark",
+        "pandas",
+        "numpy",
+    ),
+    "ml": (
+        "tensorflow",
+        "pytorch",
+        "keras",
+        "scikit",
+        "sklearn",
+        "nlp",
+        "opencv",
+        "langchain",
+        "huggingface",
+        "machine\\s+learning",
+        "deep\\s+learning",
+    ),
+    "cloud": (
+        "aws",
+        "azure",
+        "gcp",
+        "google\\s+cloud",
+        "docker",
+        "kubernetes",
+        "k8s",
+        "terraform",
+        "ansible",
+        "helm",
+        "lambda",
+        "ec2",
+        "s3",
+        "ci/cd",
+        "devops",
+        "jenkins",
+        "prometheus",
+        "grafana",
+    ),
+    "tools": (
+        "git",
+        "github",
+        "gitlab",
+        "jira",
+        "agile",
+        "scrum",
+        "linux",
+        "unix",
+        "bash",
+        "powershell",
+        "figma",
+    ),
+    "platforms_apis": (
+        "api",
+        "json",
+        "xml",
+        "yaml",
+        "oauth",
+        "jwt",
+        "ssl",
+        "tls",
+        "tcp",
+        "http",
+        "https",
+        "ldap",
+        "android",
+        "ios",
+        "jetpack",
+        "compose",
+        "webpack",
+        "vite",
+        "jest",
+        "pytest",
+        "junit",
+        "gradle",
+        "maven",
+        "npm",
+        "yarn",
+        "ml\\b",
+        "bi\\b",
+        "tableau",
+        "power\\s+bi",
+        "excel",
+        "vba",
+        "data\\s+science",
+        "computer\\s+vision",
+    ),
+}
+
+_all_keywords = [kw for keywords in _TECH_CATEGORIES.values() for kw in keywords]
+_TECH_MARKERS = re.compile(r"\b(" + "|".join(_all_keywords) + r")\b", re.I)
 
 
 def _company_tokens(company: str) -> list[str]:
@@ -43,6 +170,41 @@ def skill_embeds_company_name(skill: str, company: str) -> bool:
     if len(cw) == 1 and len(cw[0]) >= 4:
         w = cw[0]
         if re.search(rf"\b{re.escape(w)}\b", sk) and not _TECH_MARKERS.search(sk):
+            return True
+    return False
+
+
+def _normalize_skill_key(skill: str) -> str:
+    s = (skill or "").lower()
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def skill_evidence_on_resume(gap_skill: str, resume_text: str, structured_skill_names: list[str]) -> bool:
+    """
+    True if the gap label likely corresponds to something already on the resume
+    (structured skills or raw resume text).
+    """
+    g = (gap_skill or "").strip()
+    if not g:
+        return False
+    rt = (resume_text or "").lower()
+    if g.lower() in rt:
+        return True
+    g_key = _normalize_skill_key(g)
+    if len(g_key) < 2:
+        return False
+    for name in structured_skill_names:
+        n = (name or "").strip()
+        if not n:
+            continue
+        if g.lower() in name.lower() or name.lower() in g.lower():
+            return True
+        nk = _normalize_skill_key(name)
+        if not nk:
+            continue
+        if g_key == nk:
+            return True
+        if len(g_key) >= 4 and (g_key in nk or nk in g_key):
             return True
     return False
 
@@ -71,13 +233,28 @@ def is_plausible_gap_skill(skill: str, ctx: Any) -> bool:
 
 def filter_skill_gap_report(ctx: Any, report: SkillGapReport) -> SkillGapReport:
     """Drop implausible strings from gap lists (defense in depth after the LLM)."""
-    mh = [x for x in report.missing_hard_skills if is_plausible_gap_skill(x, ctx)]
-    ms = [x for x in report.missing_soft_skills if is_plausible_gap_skill(x, ctx)]
+    rtext = ""
+    snames: list[str] = []
+    if ctx is not None:
+        rtext = getattr(ctx, "resume_text", None) or ""
+        rd = getattr(ctx, "resume_data", None)
+        if rd is not None and getattr(rd, "skills", None):
+            snames = [s.name for s in rd.skills]
+
+    def _keep_skill_label(x: str) -> bool:
+        if not is_plausible_gap_skill(x, ctx):
+            return False
+        if skill_evidence_on_resume(x, rtext, snames):
+            return False
+        return True
+
+    mh = [x for x in report.missing_hard_skills if _keep_skill_label(x)]
+    ms = [x for x in report.missing_soft_skills if _keep_skill_label(x)]
 
     mr = report.missing_requirements
-    mskills = [x for x in mr.missing_skills if is_plausible_gap_skill(x, ctx)]
+    mskills = [x for x in mr.missing_skills if _keep_skill_label(x)]
 
-    roadmap = [item for item in report.learning_roadmap if is_plausible_gap_skill(item.skill, ctx)]
+    roadmap = [item for item in report.learning_roadmap if _keep_skill_label(item.skill)]
 
     return report.model_copy(
         update={

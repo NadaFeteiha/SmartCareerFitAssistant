@@ -8,7 +8,7 @@ import re
 import streamlit as st
 
 from src.models.analysis import FullAnalysis
-from ui.components import render_result_box, render_score_cards, render_skill_chips, render_pdf_preview, render_cover_letter_pdf_preview
+from ui.components import render_pdf_iframe, render_result_box, render_score_cards, render_skill_chips
 from ui.resume_handlers import on_resume_markdown_changed, on_cover_letter_changed
 from src.utils.pdf import (
     create_cover_letter_docx,
@@ -27,19 +27,14 @@ def render_results() -> None:
         st.session_state.resume_markdown_draft = result.optimized_resume
         st.session_state["_resume_score_fp"] = fingerprint_for_rescoring(result.optimized_resume)
 
-    err = st.session_state.pop("_rescore_error", None)
+    err = st.session_state.get("_rescore_error")
     if err:
         st.error(f"Re-score failed: {err}")
+        st.session_state.pop("_rescore_error", None)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     render_score_cards(result.fit_score)
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    ctx = st.session_state.get("pipeline_context")
-    if ctx is not None:
-        result = st.session_state["analysis_result"]
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -104,7 +99,7 @@ def _resume_download_basename(markdown: str) -> str:
     return candidate_name
 
 
-def __sync_resume_form():
+def _sync_resume_form():
     from src.utils.resume_parser import build_markdown_from_form
     from ui.resume_handlers import on_resume_markdown_changed
     
@@ -176,11 +171,11 @@ def __sync_resume_form():
     on_resume_markdown_changed()
 
 
-def __delete_resume_list_item(section_idx: int, item_idx: int) -> None:
+def _delete_resume_list_item(section_idx: int, item_idx: int) -> None:
     """Remove one list entry (e.g. experience) after syncing widgets, then rebuild markdown."""
     from src.utils.resume_parser import build_markdown_from_form, parse_markdown_to_form
 
-    __sync_resume_form()
+    _sync_resume_form()
     form = st.session_state.parsed_resume_form
     sections = form.get("sections", [])
     if section_idx >= len(sections):
@@ -235,7 +230,7 @@ def _render_resume_tab(result: FullAnalysis) -> None:
             
             # Add save button at the top of sections
             if st.button("💾 Save Changes", key="save_resume_changes", type="primary"):
-                __sync_resume_form()
+                _sync_resume_form()
                 st.success("Resume updated successfully!")
                 st.rerun()
             
@@ -267,7 +262,7 @@ def _render_resume_tab(result: FullAnalysis) -> None:
                                         help="Delete this experience entry",
                                         use_container_width=True,
                                     ):
-                                        __delete_resume_list_item(idx, item_idx)
+                                        _delete_resume_list_item(idx, item_idx)
                                         st.rerun()
                             
                             # Create grid for the fields
@@ -350,17 +345,22 @@ def _render_resume_tab(result: FullAnalysis) -> None:
 
     with col_prev:
         with st.container(height=600, border=False):
-            render_pdf_preview(md)
+            try:
+                pdf_bytes = create_resume_pdf(md)
+                render_pdf_iframe(pdf_bytes, "Resume Preview", fallback_text=md)
+            except Exception as e:
+                st.error(f"Error generating PDF preview: {str(e)}")
+                render_result_box(md)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 
 def _render_cover_letter_tab(result: FullAnalysis) -> None:
-    st.caption("Edit your cover letter below. Click 'Save Changes' to update preview.")
-    
+    st.caption("Edits sync automatically to your analysis and the PDF preview.")
+
     if "cover_letter_draft" not in st.session_state:
         st.session_state.cover_letter_draft = result.cover_letter
-        
+
     col_edit, col_prev = st.columns(2)
     with col_edit:
         st.text_area(
@@ -369,18 +369,21 @@ def _render_cover_letter_tab(result: FullAnalysis) -> None:
             key="cover_letter_draft",
             label_visibility="collapsed",
         )
-        
-        # Add save button for cover letter
-        if st.button("💾 Save Changes", key="save_cover_letter_changes", type="primary"):
+        ar = st.session_state.get("analysis_result")
+        draft = st.session_state.get("cover_letter_draft", result.cover_letter)
+        if ar is not None and draft != ar.cover_letter:
             on_cover_letter_changed()
-            st.success("Cover letter updated successfully!")
-            st.rerun()
-        
+
     cl = st.session_state.get("cover_letter_draft", result.cover_letter)
-    
+
     with col_prev:
         with st.container(height=600, border=False):
-            render_cover_letter_pdf_preview(cl)
+            try:
+                pdf_bytes = create_cover_letter_pdf(cl, name="Cover Letter")
+                render_pdf_iframe(pdf_bytes, "Cover Letter Preview", fallback_text=cl)
+            except Exception as e:
+                st.error(f"Error generating PDF preview: {str(e)}")
+                render_result_box(cl)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
