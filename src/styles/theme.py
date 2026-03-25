@@ -8,7 +8,7 @@ _FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght
 
 
 def apply_theme_styles(theme: str | None = None) -> None:
-    """Inject CSS for the active theme. Call after sidebar sets ``st.session_state.ui_theme``."""
+    """Inject CSS for the active theme. Uses ``st.session_state.ui_theme`` when ``theme`` is None."""
     t = (theme or st.session_state.get("ui_theme") or "dark").lower()
     if t not in ("dark", "light"):
         t = "dark"
@@ -23,41 +23,11 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 .stApp {{ background: #0A0F1C !important; color: #E2E8F0; }}
 #MainMenu, footer {{ visibility: hidden; }}
 
-[data-testid="stSidebar"] {{
-    background: #111827 !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+[data-testid="stSidebar"],
+[data-testid="stSidebarNavLink"],
+[data-testid="stSidebarCollapsedControl"] {{
+    display: none !important;
 }}
-[data-testid="stSidebar"] * {{ color: #94A3B8 !important; }}
-[data-testid="stSidebar"] .stTextInput input,
-[data-testid="stSidebar"] .stTextArea textarea,
-[data-testid="stSidebar"] .stSelectbox select {{
-    background: #1E293B !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: #F8FAFC !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease;
-}}
-[data-testid="stSidebar"] .stTextInput input:focus,
-[data-testid="stSidebar"] .stTextArea textarea:focus {{
-    border-color: #6366F1 !important;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
-}}
-[data-testid="stSidebar"] .stButton > button {{
-    background: linear-gradient(135deg, #6366F1, #4F46E5) !important;
-    border: none !important;
-    color: white !important;
-    font-weight: 600 !important;
-    border-radius: 10px !important;
-    width: 100% !important;
-    box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}}
-[data-testid="stSidebar"] .stButton > button:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-}}
-.sidebar-logo {{ font-size: 20px; font-weight: 800; background: -webkit-linear-gradient(180deg, #A5B4FC, #6366F1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
-.sidebar-sub  {{ font-size: 13px; color: #64748B !important; margin-top: 4px; letter-spacing: 0.5px; }}
 
 .hero {{
     background: radial-gradient(circle at top left, #1E1B4B 0%, #0A0F1C 50%, #0A0F1C 100%);
@@ -256,41 +226,11 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 .stApp {{ background: #F8FAFC !important; color: #0F172A; }}
 #MainMenu, footer {{ visibility: hidden; }}
 
-[data-testid="stSidebar"] {{
-    background: #FFFFFF !important;
-    border-right: 1px solid rgba(0, 0, 0, 0.05);
+[data-testid="stSidebar"],
+[data-testid="stSidebarNavLink"],
+[data-testid="stSidebarCollapsedControl"] {{
+    display: none !important;
 }}
-[data-testid="stSidebar"] * {{ color: #475569 !important; }}
-[data-testid="stSidebar"] .stTextInput input,
-[data-testid="stSidebar"] .stTextArea textarea,
-[data-testid="stSidebar"] .stSelectbox select {{
-    background: #F1F5F9 !important;
-    border: 1px solid rgba(0, 0, 0, 0.05) !important;
-    color: #0F172A !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease;
-}}
-[data-testid="stSidebar"] .stTextInput input:focus,
-[data-testid="stSidebar"] .stTextArea textarea:focus {{
-    border-color: #4F46E5 !important;
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
-}}
-[data-testid="stSidebar"] .stButton > button {{
-    background: linear-gradient(135deg, #4F46E5, #4338CA) !important;
-    border: none !important;
-    color: white !important;
-    font-weight: 600 !important;
-    border-radius: 10px !important;
-    width: 100% !important;
-    box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.25);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}}
-[data-testid="stSidebar"] .stButton > button:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.35);
-}}
-.sidebar-logo {{ font-size: 20px; font-weight: 800; background: -webkit-linear-gradient(180deg, #4338CA, #4F46E5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
-.sidebar-sub  {{ font-size: 13px; color: #64748B !important; margin-top: 4px; letter-spacing: 0.5px; }}
 
 .hero {{
     background: radial-gradient(circle at top left, #EEF2FF 0%, #FFFFFF 50%, #F8FAFC 100%);

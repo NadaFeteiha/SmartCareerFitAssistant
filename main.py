@@ -2,13 +2,8 @@
 CLI entry point — useful for testing the pipeline without the UI.
 Usage: uv run python main.py
 """
-import asyncio
 from src.database.database import init_db
-from src.services.pipeline import (
-    finalize_resume_cover_letter_and_save_sync,
-    run_pipeline_through_gap_analysis_sync,
-    stream_optimized_resume_for_streamlit,
-)
+from src.services.pipeline import run_pipeline_sync
 
 SAMPLE_RESUME = """
 John Smith
@@ -53,14 +48,10 @@ Responsibilities:
 - Mentor junior developers
 """
 
-async def main():
+def main():
     init_db()
     print("Running pipeline with sample data...\n")
-    ctx, fit_score, skill_gaps = run_pipeline_through_gap_analysis_sync(SAMPLE_RESUME, SAMPLE_JD)
-    full_resume_md = "".join(stream_optimized_resume_for_streamlit(ctx))
-    result = finalize_resume_cover_letter_and_save_sync(
-        ctx, fit_score, skill_gaps, full_resume_md
-    )
+    result, _ctx = run_pipeline_sync(SAMPLE_RESUME, SAMPLE_JD)
 
     print(f"\n{'='*50}")
     print(f"FIT SCORE: {result.fit_score.overall}/100")
@@ -77,5 +68,5 @@ async def main():
     print(result.cover_letter[:300] + "...")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
     

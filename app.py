@@ -9,13 +9,9 @@ import hashlib
 import streamlit as st
 
 from src.database.database import init_db
-from src.services.pipeline import (
-    finalize_resume_cover_letter_and_save_sync,
-    run_pipeline_through_gap_analysis_sync,
-    stream_optimized_resume_for_streamlit,
-)
+from src.services.pipeline import run_pipeline_sync
 from src.utils.resume_sections import fingerprint_for_rescoring
-from ui import apply_styles, render_hero, render_results, render_sidebar
+from ui import apply_styles, render_hero, render_results, render_theme_control
 from ui.callbacks import queue_pipeline_run
 from ui.skill_survey import render_chat_assistant
 from ui.input_panel import (
@@ -32,7 +28,6 @@ st.set_page_config(
     page_title="SmartCareerFit",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 if "ui_theme" not in st.session_state:
@@ -40,7 +35,7 @@ if "ui_theme" not in st.session_state:
 if "resume_upload_mode" not in st.session_state:
     st.session_state.resume_upload_mode = "Paste text"
 
-render_sidebar()
+render_theme_control()
 apply_styles(st.session_state.ui_theme)
 
 render_hero()
@@ -98,21 +93,13 @@ if st.session_state.pop("pipeline_queued", False):
             st.success("Loaded cached analysis for this resume + job pair.")
         else:
             with st.status("Running AI analysis… (2–5 min on local hardware)", expanded=True) as status:
-                st.write("⏳ Step 1/3 — Extracting structured data from resume and JD...")
-                st.write("⏳ Step 2/3 — Scoring fit and identifying skill gaps...")
-                st.write("⏳ Step 3/3 — Generating optimized resume and cover letter...")
+                st.write("⏳ Step 1/4 — Extracting structured data from resume and JD...")
+                st.write("⏳ Step 2/4 — Enriching with saved skills (if any)...")
+                st.write("⏳ Step 3/4 — Scoring fit and identifying skill gaps...")
+                st.write("⏳ Step 4/4 — Generating optimized resume and cover letter...")
                 try:
                     _reset_post_analysis_state()
-                    ctx, fit_score, skill_gaps = run_pipeline_through_gap_analysis_sync(
-                        resume_text, job_text
-                    )
-                    st.write("✓ Scoring complete — streaming optimized resume…")
-                    full_resume_md = st.write_stream(
-                        stream_optimized_resume_for_streamlit(ctx)
-                    )
-                    result = finalize_resume_cover_letter_and_save_sync(
-                        ctx, fit_score, skill_gaps, full_resume_md
-                    )
+                    result, ctx = run_pipeline_sync(resume_text, job_text)
                     st.session_state["analysis_result"] = result
                     st.session_state["pipeline_context"] = ctx
                     st.session_state["resume_markdown_draft"] = result.optimized_resume

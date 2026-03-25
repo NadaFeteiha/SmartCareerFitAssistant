@@ -7,7 +7,7 @@ import copy
 import streamlit as st
 
 from src.agents.context import AnalysisContext
-from src.models.analysis import FullAnalysis, SkillGapReport
+from src.models.analysis import FitScore, FullAnalysis, SkillGapReport
 from src.models.resume import Skill
 from src.services.pipeline import recalculate_fit_and_gaps_sync
 from src.utils.resume_sections import fingerprint_for_rescoring, inject_skill_into_markdown
@@ -37,6 +37,44 @@ def _build_skill_queue(result: FullAnalysis, ctx: AnalysisContext | None = None)
         seen.add(k)
         out.append((t, "soft"))
     return out
+
+
+def _recalculate_fit_gaps_and_merge_queue() -> tuple[FitScore | None, int]:
+    """
+    Sync ``ctx.resume_text`` to the current optimized resume, re-run fit score + gap analysis,
+    update session state, and append any newly discovered gap skills to the survey queue.
+
+    Returns ``(new_fit, num_newly_queued)`` or ``(None, 0)`` if there is no pipeline context.
+    """
+    ctx = copy.deepcopy(st.session_state.get("pipeline_context"))
+    ar: FullAnalysis = st.session_state.analysis_result
+    if ctx is None:
+        return None, 0
+    old_fit = ar.fit_score
+    ctx.resume_text = ar.optimized_resume
+    new_fit, new_gaps = recalculate_fit_and_gaps_sync(ctx)
+    confirmed = st.session_state.get("skill_survey_confirmed", [])
+    new_gaps = _scrub_confirmed_gaps(new_gaps, confirmed)
+    if new_fit.overall < old_fit.overall:
+        new_fit = new_fit.model_copy(update={"overall": old_fit.overall})
+
+    st.session_state.analysis_result = ar.model_copy(
+        update={"fit_score": new_fit, "skill_gaps": new_gaps}
+    )
+    st.session_state["pipeline_context"] = ctx
+    st.session_state["_resume_score_fp"] = fingerprint_for_rescoring(ar.optimized_resume)
+
+    new_queue = _build_skill_queue(st.session_state.analysis_result, ctx)
+    answered = st.session_state.get("skill_survey_answered", set())
+    already_queued = {s.lower() for s, _ in st.session_state.skill_survey_queue}
+    unanswered = [
+        (s, k)
+        for s, k in new_queue
+        if s.lower() not in answered and s.lower() not in already_queued
+    ]
+    if unanswered:
+        st.session_state.skill_survey_queue.extend(unanswered)
+    return new_fit, len(unanswered)
 
 
 def _scrub_confirmed_gaps(new_gaps: SkillGapReport, confirmed: list[str]) -> SkillGapReport:
@@ -81,6 +119,8 @@ def _advance_skill_yes() -> None:
         return
     skill_name, kind = q[idx]
 
+    st.session_state._last_skill_response = "yes"
+
     user_name = ctx.resume_data.name
     if user_name:
         add_user_skill(user_name, skill_name)
@@ -98,19 +138,40 @@ def _advance_skill_yes() -> None:
     st.session_state.setdefault("skill_survey_answered", set()).add(skill_name.lower())
 
     st.session_state.skill_chat.append({"role": "user", "content": f"Yes — I have: {skill_name}"})
-    st.session_state.skill_chat.append(
-        {
-            "role": "assistant",
-            "content": f"Added **{skill_name}** to your optimized resume. Your fit score will update when you finish the survey.",
-        }
-    )
 
     st.session_state.analysis_result = ar.model_copy(update={"optimized_resume": new_md})
     st.session_state.resume_markdown_draft = new_md
     st.session_state._last_md_to_parse = new_md
-
-    st.session_state.skill_survey_index = idx + 1
     st.session_state["pipeline_context"] = ctx
+
+    new_fit, n_new_queued = _recalculate_fit_gaps_and_merge_queue()
+    if new_fit is None:
+        return
+
+    q = st.session_state.skill_survey_queue
+    new_idx = idx + 1
+    st.session_state.skill_survey_index = new_idx
+
+    score_block = (
+        f"Added **{skill_name}** to your optimized resume.\n\n"
+        f"**Updated fit score:** **{new_fit.overall}/100** "
+        f"(skill match {new_fit.skill_match}/40 · experience {new_fit.experience_alignment}/30 · "
+        f"keywords {new_fit.keyword_coverage}/30)\n\n"
+        f"{new_fit.explanation}"
+    )
+    if n_new_queued > 0:
+        score_block += (
+            "\n\nThe refreshed analysis added **more** skills to verify — I'll ask about those next."
+        )
+    st.session_state.skill_chat.append({"role": "assistant", "content": score_block})
+
+    if new_idx >= len(st.session_state.skill_survey_queue):
+        st.session_state._skip_finalize_recalc = True
+        st.session_state.skill_survey_finished = True
+        st.toast("Analysis and scores updated!", icon="✅")
+        return
+
+    st.toast(f"Score updated: {new_fit.overall}/100", icon="📈")
 
 
 def _advance_skill_no() -> None:
@@ -119,6 +180,7 @@ def _advance_skill_no() -> None:
     if idx >= len(q):
         return
     skill_name, _kind = q[idx]
+    st.session_state._last_skill_response = "no"
     st.session_state.skill_chat.append(
         {"role": "user", "content": f"No — I don't have: {skill_name}"}
     )
@@ -133,66 +195,76 @@ def _advance_skill_no() -> None:
 
 
 def _finalize_skill_survey() -> None:
+    if st.session_state.pop("_skip_finalize_recalc", False):
+        return
+
     ctx = copy.deepcopy(st.session_state.get("pipeline_context"))
     if ctx is None:
         st.session_state.skill_survey_finished = True
         return
+
+    confirmed = st.session_state.get("skill_survey_confirmed", [])
+    last = st.session_state.get("_last_skill_response")
+
+    if not confirmed:
+        st.session_state.skill_chat.append(
+            {
+                "role": "assistant",
+                "content": "You didn't add any skills from the gap list. Your original analysis is unchanged.",
+            }
+        )
+        st.session_state.skill_survey_finished = True
+        return
+
+    if last == "no":
+        st.session_state.skill_chat.append(
+            {
+                "role": "assistant",
+                "content": "**Survey complete.** Your scores already reflect each skill you confirmed.",
+            }
+        )
+        st.toast("Skill check complete", icon="✅")
+        st.session_state.skill_survey_finished = True
+        return
+
     try:
         ar: FullAnalysis = st.session_state.analysis_result
-        old_fit = ar.fit_score
-        ctx.resume_text = ar.optimized_resume
-        new_fit, new_gaps = recalculate_fit_and_gaps_sync(ctx)
-        st.session_state["pipeline_context"] = ctx
+        new_fit, n_new = _recalculate_fit_gaps_and_merge_queue()
+        if new_fit is None:
+            st.session_state.skill_survey_finished = True
+            return
 
-        confirmed = st.session_state.get("skill_survey_confirmed", [])
-        new_gaps = _scrub_confirmed_gaps(new_gaps, confirmed)
-
-        if new_fit.overall < old_fit.overall:
-            new_fit = new_fit.model_copy(update={"overall": old_fit.overall})
-
-        st.session_state.analysis_result = ar.model_copy(
-            update={"fit_score": new_fit, "skill_gaps": new_gaps}
-        )
         st.session_state.resume_markdown_draft = ar.optimized_resume
         st.session_state._last_md_to_parse = ar.optimized_resume
-        st.session_state["_resume_score_fp"] = fingerprint_for_rescoring(ar.optimized_resume)
 
-        new_queue = _build_skill_queue(st.session_state.analysis_result, ctx)
-        answered = st.session_state.get("skill_survey_answered", set())
-        already_queued = {s.lower() for s, _ in st.session_state.skill_survey_queue}
-        unanswered = [
-            (s, k)
-            for s, k in new_queue
-            if s.lower() not in answered and s.lower() not in already_queued
-        ]
-
-        if unanswered:
-            st.session_state.skill_survey_queue.extend(unanswered)
+        if n_new > 0:
             st.session_state.skill_chat.append(
                 {
                     "role": "assistant",
                     "content": (
-                        f"I've rescored your resume. **New overall score: {new_fit.overall}/100**.\n\n"
-                        f"However, the AI identified a few more missing requirements. Let's verify them."
+                        f"**Updated overall score: {new_fit.overall}/100.** "
+                        "The refreshed analysis found more skills to verify — continue when you're ready."
                     ),
                 }
             )
-            st.toast("Score updated, but more skills were found!", icon="🔄")
-        else:
-            st.session_state.skill_chat.append(
-                {
-                    "role": "assistant",
-                    "content": (
-                        f"All set. **Final overall score: {new_fit.overall}/100** "
-                        f"(skill match {new_fit.skill_match}/40, "
-                        f"experience {new_fit.experience_alignment}/30, "
-                        f"keywords {new_fit.keyword_coverage}/30).\n\n"
-                        f"{new_fit.explanation}"
-                    ),
-                }
-            )
-            st.toast("Scores & Learning Roadmap successfully updated! 🎯", icon="✅")
-            st.session_state.skill_survey_finished = True
+            st.toast("Score updated — more skills to verify", icon="🔄")
+            st.session_state.skill_survey_finished = False
+            return
+
+        st.session_state.skill_chat.append(
+            {
+                "role": "assistant",
+                "content": (
+                    f"All set. **Final overall score: {new_fit.overall}/100** "
+                    f"(skill match {new_fit.skill_match}/40, "
+                    f"experience {new_fit.experience_alignment}/30, "
+                    f"keywords {new_fit.keyword_coverage}/30).\n\n"
+                    f"{new_fit.explanation}"
+                ),
+            }
+        )
+        st.toast("Scores & learning roadmap updated", icon="✅")
+        st.session_state.skill_survey_finished = True
 
     except Exception as e:
         st.session_state.skill_chat.append(
@@ -254,9 +326,9 @@ def render_chat_assistant() -> None:
                     "---\n"
                 ) + (
                     "I'll go through each **missing skill** from the analysis. "
-                    "If you actually have it, say **Yes** and I'll add it to your optimized resume. "
-                    "When you **finish** all questions, I'll **recalculate your fit score** and update gaps; "
-                    "if the model finds more missing skills, I'll ask about those next."
+                    "If you actually have it, tap **Yes — Add** and I'll add it to your optimized resume, "
+                    "**recalculate your total fit score**, and **refresh gap analysis and the learning roadmap** "
+                    "right away. If new gaps appear, I'll ask about those next."
                     if queue else "You have no missing skills to verify. Great job!"
                 ),
             }

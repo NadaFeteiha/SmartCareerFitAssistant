@@ -9,6 +9,18 @@ import streamlit as st
 from src.models.analysis import FitScore
 
 
+def render_theme_control() -> None:
+    """Appearance toggle (sidebar removed; theme lives in the main layout)."""
+    _, right = st.columns([4, 1])
+    with right:
+        st.selectbox(
+            "Appearance",
+            ["dark", "light"],
+            key="ui_theme",
+            help="Light or dark colors for the app.",
+        )
+
+
 def render_hero() -> None:
     """Render the hero banner with tagline and stat pills."""
     st.markdown("""
