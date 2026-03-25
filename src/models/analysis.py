@@ -1,12 +1,5 @@
 from pydantic import BaseModel, Field
 
-"""
-Models for the analysis pipeline output. These are used to structure the data returned by the API endpoints.
-it includes:- FitScore: A breakdown of the resume's fit against the job description, with an overall score and sub-scores for skills, experience, and keywords.
-- SkillGapReport: A report on missing hard and soft skills, along with a learning roadmap that prioritizes which skills to acquire and why.
-- FullAnalysis: A comprehensive model that combines the fit score, skill gap report, optimized resume, and cover letter into a single structured response for the API.
-
-"""
 
 class FitScore(BaseModel):
     """Scoring breakdown for a resume vs. job description."""
@@ -17,20 +10,31 @@ class FitScore(BaseModel):
     strengths: list[str]
     explanation: str
 
+
 class LearningItem(BaseModel):
     skill: str
     priority: str = Field(description="'high', 'medium', or 'low'")
     reason: str
     suggestion: str
 
+
+class MissingRequirements(BaseModel):
+    """Structured gap list: skills, experience themes, and JD keywords absent from the resume."""
+    missing_skills: list[str] = Field(default_factory=list)
+    missing_experience: list[str] = Field(default_factory=list)
+    missing_keywords: list[str] = Field(default_factory=list)
+
+
 class SkillGapReport(BaseModel):
-    """Missing skills and learning recommendations."""
+    """Missing skills, detailed requirements gap, and learning roadmap."""
     missing_hard_skills: list[str]
     missing_soft_skills: list[str]
+    missing_requirements: MissingRequirements = Field(default_factory=MissingRequirements)
     learning_roadmap: list[LearningItem]
 
+
 class FullAnalysis(BaseModel):
-    """Complete pipeline output — all 4 features in one model."""
+    """Complete pipeline output — all features in one model."""
     fit_score: FitScore
     skill_gaps: SkillGapReport
     optimized_resume: str

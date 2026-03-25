@@ -1,6 +1,8 @@
 import json
-from src.db.database import get_connection
+
+from src.database.database import get_connection
 from src.models.analysis import FullAnalysis
+
 
 def save_analysis(analysis: FullAnalysis, job_title: str = "", company: str = "") -> int:
     """Save a FullAnalysis to the database. Returns the new row ID."""
@@ -30,11 +32,34 @@ def save_analysis(analysis: FullAnalysis, job_title: str = "", company: str = ""
     conn.close()
     return row_id
 
+
 def get_all_analyses() -> list[dict]:
-    """Fetch all saved analyses, newest first."""
+    """Fetch all saved analyses, newest first (by insert id)."""
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM analyses ORDER BY created_at DESC"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM analyses ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def add_user_skill(user_name: str, skill_name: str) -> None:
+    """Save a confirmed skill for a user."""
+    if not user_name or not skill_name:
+        return
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO user_skills (user_name, skill_name) VALUES (?, ?)",
+        (user_name.strip(), skill_name.strip())
+    )
+    conn.commit()
+    conn.close()
+
+def get_user_skills(user_name: str) -> list[str]:
+    """Retrieve all permanently confirmed skills for a specific user."""
+    if not user_name:
+        return []
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT skill_name FROM user_skills WHERE user_name = ? ORDER BY skill_name COLLATE NOCASE",
+        (user_name.strip(),),
+    ).fetchall()
+    conn.close()
+    return [r["skill_name"] for r in rows]

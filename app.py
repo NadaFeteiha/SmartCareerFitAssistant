@@ -1,16 +1,25 @@
 """
-Streamlit entry point.
-Responsibilities: page config, wiring UI modules to the pipeline.
-Nothing else belongs here.
+Streamlit entry point — layout, session defaults, and pipeline orchestration.
+Heavy UI lives under ``ui/``; styles in ``src/styles``; persistence in ``src/database``.
 """
+from __future__ import annotations
+
 import streamlit as st
 
-from src.db.database import init_db
+from src.database.database import init_db
 from src.services.pipeline import run_pipeline_sync
-from src.services.pdf_parser import extract_text_from_pdf
-from ui import apply_styles, render_sidebar, render_hero, render_step_label, render_results
+from src.utils.resume_sections import fingerprint_for_rescoring
+from ui import apply_styles, render_hero, render_results, render_sidebar
+from ui.callbacks import queue_pipeline_run
+from ui.skill_survey import render_chat_assistant
+from ui.input_panel import (
+    get_job_text_for_pipeline,
+    get_resume_text_for_pipeline,
+    inputs_ready,
+    render_input_panel,
+)
 
-# ── Bootstrap ──────────────────────────────────────────────────────────────────
+# ── Bootstrap ─────────────────────────────────────────────────────────────────
 init_db()
 
 st.set_page_config(
@@ -20,74 +29,67 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-apply_styles()
+if "ui_theme" not in st.session_state:
+    st.session_state.ui_theme = "dark"
+if "resume_upload_mode" not in st.session_state:
+    st.session_state.resume_upload_mode = "Paste text"
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-profile = render_sidebar()
+render_sidebar()
+apply_styles(st.session_state.ui_theme)
 
-# ── Hero ───────────────────────────────────────────────────────────────────────
 render_hero()
+render_input_panel()
 
-# ── Inputs ─────────────────────────────────────────────────────────────────────
-col1, col2 = st.columns([1, 1], gap="large")
-
-with col1:
-    render_step_label(1, "Upload Your Resume")
-    upload_mode = st.radio("Input method", ["Upload PDF", "Paste text"],
-                           horizontal=True, label_visibility="collapsed")
-    resume_text = ""
-
-    if upload_mode == "Upload PDF":
-        uploaded = st.file_uploader("Drop your PDF here",
-                                    type=["pdf"], label_visibility="collapsed")
-        if uploaded:
-            resume_text = extract_text_from_pdf(uploaded)
-            st.success(f"✓ Loaded: {uploaded.name}")
-            with st.expander("Preview extracted text"):
-                st.text(resume_text[:800] + ("..." if len(resume_text) > 800 else ""))
-    else:
-        resume_text = st.text_area(
-            "Paste resume", height=280,
-            placeholder="John Smith\njohn@email.com\n\nSKILLS\nPython, FastAPI...",
-            label_visibility="collapsed",
-        )
-
-with col2:
-    render_step_label(2, "Paste the Job Description")
-    job_text = st.text_area(
-        "Job description", height=320,
-        placeholder="Senior Python Developer...\n\nRequired Skills:\n- Python\n- Docker...",
-        label_visibility="collapsed",
-    )
-
-# ── Analyze button ─────────────────────────────────────────────────────────────
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 btn_col, _ = st.columns([1, 2])
 with btn_col:
-    run = st.button(
+    st.button(
         "🚀 Analyze & Generate All Outputs",
         type="primary",
-        disabled=not (resume_text.strip() and job_text.strip()),
+        disabled=not inputs_ready(),
+        on_click=queue_pipeline_run,
+        key="btn_run_pipeline",
     )
 
-if not (resume_text.strip() and job_text.strip()):
+if not inputs_ready():
     st.info("Complete both steps above to enable analysis.")
 
-# ── Pipeline ───────────────────────────────────────────────────────────────────
-if run:
-    with st.status("Running AI analysis… (2–5 min on local hardware)",
-                   expanded=True) as status:
-        st.write("⏳ Step 1/3 — Extracting structured data from resume and JD...")
-        st.write("⏳ Step 2/3 — Scoring fit and identifying skill gaps...")
-        st.write("⏳ Step 3/3 — Generating optimized resume and cover letter...")
-        try:
-            result = run_pipeline_sync(resume_text, job_text)
-            st.session_state["analysis_result"] = result
-            status.update(label="✅ Analysis complete!", state="complete")
-        except Exception as e:
-            status.update(label="Analysis failed", state="error")
-            st.error(f"Error: {e}")
-            st.stop()
+# ── Pipeline (triggered via on_click → session flag) ─────────────────────────
+if st.session_state.pop("pipeline_queued", False):
+    resume_text = get_resume_text_for_pipeline()
+    job_text = get_job_text_for_pipeline()
+    if not (resume_text.strip() and job_text.strip()):
+        st.warning("Add resume content and a job description before analyzing.")
+    else:
+        with st.status("Running AI analysis… (2–5 min on local hardware)", expanded=True) as status:
+            st.write("⏳ Step 1/3 — Extracting structured data from resume and JD...")
+            st.write("⏳ Step 2/3 — Scoring fit and identifying skill gaps...")
+            st.write("⏳ Step 3/3 — Generating optimized resume and cover letter...")
+            try:
+                for _k in (
+                    "skill_survey_queue",
+                    "skill_survey_index",
+                    "skill_survey_finished",
+                    "skill_chat",
+                    "resume_markdown_draft",
+                    "_resume_score_fp",
+                    "_rescore_error",
+                ):
+                    st.session_state.pop(_k, None)
+                result, ctx = run_pipeline_sync(resume_text, job_text)
+                st.session_state["analysis_result"] = result
+                st.session_state["pipeline_context"] = ctx
+                st.session_state["resume_markdown_draft"] = result.optimized_resume
+                st.session_state["_resume_score_fp"] = fingerprint_for_rescoring(
+                    result.optimized_resume
+                )
+                status.update(label="✅ Analysis complete!", state="complete")
+            except Exception as e:
+                status.update(label="Analysis failed", state="error")
+                st.error(f"Error: {e}")
+                st.stop()
+
+render_chat_assistant()
 
 if "analysis_result" in st.session_state:
-    render_results(st.session_state["analysis_result"])
+    render_results()

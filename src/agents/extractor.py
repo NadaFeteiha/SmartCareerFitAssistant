@@ -5,7 +5,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.agents.utils import unwrap_llm_json
 from src.models.resume import ResumeData
 from src.models.job import JobRequirements
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 def _make_model() -> OpenAIModel:
@@ -76,7 +76,7 @@ _resume_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a resume parser. Extract structured data from the resume text.
 
 Return ONLY a JSON object with exactly these fields:
@@ -105,15 +105,24 @@ No markdown. No explanation. No wrapper keys. Just the JSON object.""",
 
 async def extract_resume(text: str) -> ResumeData:
     """Run the resume extractor and validate the output as ResumeData."""
-    raw = (await _resume_agent.run(text)).output
-    clean = unwrap_llm_json(raw)
+    import re
+    
+    last_error = None
+    for attempt in range(3):
+        raw = (await _resume_agent.run(text)).output
+        clean = unwrap_llm_json(raw)
+        
+        # Repair common JSON errors like trailing commas
+        clean = re.sub(r',\s*([\]}])', r'\1', clean)
 
-    try:
-        return ResumeData.model_validate_json(clean)
-    except Exception as e:
-        print(f"\n[DEBUG] Raw resume LLM output:\n{raw}\n")
-        print(f"[DEBUG] After unwrap:\n{clean}\n")
-        raise
+        try:
+            return ResumeData.model_validate_json(clean)
+        except Exception as e:
+            last_error = e
+            print(f"[DEBUG] extract_resume attempt {attempt + 1} failed: {e}")
+            
+    print(f"\n[DEBUG] Raw resume LLM output (final failure):\n{raw}\n")
+    raise last_error
 
 
 # --- Job description extractor ---
@@ -121,7 +130,7 @@ _job_agent = Agent(
     _make_model(),
     output_type=str,   # Get raw string first, parse manually
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a job description parser. Extract structured data.
 
 Return ONLY a JSON object with exactly these fields:
@@ -142,15 +151,24 @@ No markdown. No explanation. No wrapper keys. Just the JSON object.""",
 
 async def extract_job(text: str) -> JobRequirements:
     """Run the job extractor and validate the output as JobRequirements."""
-    raw = (await _job_agent.run(text)).output
-    clean = _sanitize_job_requirements(raw)
+    import re
+    
+    last_error = None
+    for attempt in range(3):
+        raw = (await _job_agent.run(text)).output
+        
+        # Basic raw string trailing comma repair before sanitize
+        raw_repaired = re.sub(r',\s*([\]}])', r'\1', raw)
+        clean = _sanitize_job_requirements(raw_repaired)
 
-    try:
-        return JobRequirements.model_validate_json(clean)
-    except Exception:
-        print(f"\n[DEBUG] Raw JD LLM output:\n{raw}\n")
-        print(f"[DEBUG] After sanitize:\n{clean}\n")
-        raise
+        try:
+            return JobRequirements.model_validate_json(clean)
+        except Exception as e:
+            last_error = e
+            print(f"[DEBUG] extract_job attempt {attempt + 1} failed: {e}")
+            
+    print(f"\n[DEBUG] Raw JD LLM output (final failure):\n{raw}\n")
+    raise last_error
 
 
 # Keep these names for backward compatibility with pipeline.py

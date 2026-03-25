@@ -7,7 +7,7 @@ from src.models.resume import ResumeData
 from src.models.job import JobRequirements
 from src.models.analysis import FitScore, SkillGapReport
 from src.agents.utils import unwrap_llm_json
-from src.config import settings
+from src.config import completion_settings, settings
 
 
 @dataclass
@@ -35,7 +35,7 @@ _scorer_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a career analyst. Score the candidate's fit for a job.
 
 Return ONLY a JSON object with exactly these fields:
@@ -60,11 +60,17 @@ Rules:
 def _scorer_context(ctx: RunContext[AnalysisContext]) -> str:
     candidate_skills = [s.name for s in ctx.deps.resume_data.skills]
     required_skills = [s.name for s in ctx.deps.job_data.required_skills]
+    body = (ctx.deps.resume_text or "")[:12000]
     return f"""
-Candidate skills: {candidate_skills}
+Candidate skills (structured): {candidate_skills}
 Required skills: {required_skills}
 Job title: {ctx.deps.job_data.title}
 Candidate summary: {ctx.deps.resume_data.summary}
+
+User-edited resume body (markdown; use for keyword and experience judgment):
+---
+{body}
+---
 """
 
 
@@ -125,13 +131,18 @@ _gap_agent = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=3,
-    model_settings={"max_tokens": 4000},
+    model_settings=completion_settings(4000),
     system_prompt="""You are a career coach. Identify skill gaps and create a learning roadmap.
 
 Return ONLY a JSON object with exactly these fields:
 {
   "missing_hard_skills": ["skill1", "skill2"],
   "missing_soft_skills": ["skill1"],
+  "missing_requirements": {
+    "missing_skills": ["Specific required skills not evidenced on resume"],
+    "missing_experience": ["JD responsibilities or experience themes not shown in work history"],
+    "missing_keywords": ["Important JD terms/keywords absent from resume text"]
+  },
   "learning_roadmap": [
     {
       "skill": "Kubernetes",
@@ -145,6 +156,10 @@ Return ONLY a JSON object with exactly these fields:
 Rules:
 - priority must be one of: high, medium, low
 - All list values must be plain strings
+- missing_requirements lists must be specific and non-overlapping with duplicate strings
+- missing_hard_skills and missing_soft_skills must list ONLY genuine transferable skills (languages, frameworks,
+  tools, platforms, methodologies). NEVER list employer names, store/brand names, company-specific product names,
+  or multi-word phrases copied from the job ad that are not standard industry skills.
 - No markdown, no wrapper keys, just the JSON object""",
 )
 
@@ -152,22 +167,65 @@ Rules:
 def _gap_context(ctx: RunContext[AnalysisContext]) -> str:
     candidate_skills = [s.name for s in ctx.deps.resume_data.skills]
     required_skills = [s.name for s in ctx.deps.job_data.required_skills]
+    resume_snip = (ctx.deps.resume_text or "")[:8000]
     return f"""
 Candidate skills: {candidate_skills}
 Required skills: {required_skills}
 Job title: {ctx.deps.job_data.title}
+Job responsibilities (if known from JD): {ctx.deps.job_data.responsibilities}
+Resume excerpt:
+---
+{resume_snip}
+---
 """
 
 
+def _sanitize_skill_gap_json(clean: str) -> str:
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError:
+        return clean
+    if not isinstance(data, dict):
+        return clean
+
+    for key in ("missing_hard_skills", "missing_soft_skills", "learning_roadmap"):
+        if key not in data or not isinstance(data[key], list):
+            data[key] = []
+
+    mr = data.get("missing_requirements")
+    if mr is None or not isinstance(mr, dict):
+        data["missing_requirements"] = {
+            "missing_skills": [],
+            "missing_experience": [],
+            "missing_keywords": [],
+        }
+    else:
+        for key in ("missing_skills", "missing_experience", "missing_keywords"):
+            v = mr.get(key)
+            if v is None:
+                mr[key] = []
+            elif isinstance(v, str):
+                mr[key] = [v]
+            elif not isinstance(v, list):
+                mr[key] = []
+            else:
+                mr[key] = [str(x).strip() for x in v if str(x).strip()]
+        data["missing_requirements"] = mr
+    return json.dumps(data)
+
+
 async def analyze_gaps(ctx: AnalysisContext) -> SkillGapReport:
+    from src.utils.skill_validation import filter_skill_gap_report
+
     raw = (await _gap_agent.run("Identify skill gaps.", deps=ctx)).output
-    clean = unwrap_llm_json(raw)
+    clean = _sanitize_skill_gap_json(unwrap_llm_json(raw))
 
     try:
-        return SkillGapReport.model_validate_json(clean)
+        report = SkillGapReport.model_validate_json(clean)
+        return filter_skill_gap_report(ctx, report)
     except Exception:
         print(f"\n[DEBUG] Raw skill gap LLM output:\n{raw}\n")
-        print(f"[DEBUG] After unwrap:\n{clean}\n")
+        print(f"[DEBUG] After sanitize:\n{clean}\n")
         raise
 
 

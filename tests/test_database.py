@@ -4,8 +4,8 @@ Tests for the SQLite database layer — no LLM calls, pure CRUD.
 import json
 import os
 import pytest
-from src.db.database import init_db, get_connection
-from src.db.repository import save_analysis, get_all_analyses
+from src.database.database import init_db, get_connection
+from src.database.repository import save_analysis, get_all_analyses
 from src.models.analysis import FullAnalysis, FitScore, SkillGapReport, LearningItem
 
 TEST_DB = "data/test_career.db"

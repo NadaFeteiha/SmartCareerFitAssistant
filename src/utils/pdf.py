@@ -89,7 +89,7 @@ def _styles() -> dict:
         ),
         "skill_label": ParagraphStyle(
             "SkillLabel", parent=base["Normal"],
-            fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+            fontName="Helvetica-Bold", fontSize=10, leading=13,
             textColor=DARK_GRAY,
         ),
         "skill_value": ParagraphStyle(
@@ -154,7 +154,7 @@ def _exp_row(role: str, company: str, date: str, location: str, st: dict) -> Tab
 def _skills_2col_table(category_map: dict[str, list[str]], st: dict) -> Table:
     """
     Two-column layout where each column is a (Category | Skills) pair.
-    Produces a clean, professional skills block with zebra rows per column.
+    Clean professional skills block matching the attached image format.
     """
     categories = list(category_map.items())   # [(label, [skill, ...]), ...]
     # Split into left and right halves
@@ -166,54 +166,39 @@ def _skills_2col_table(category_map: dict[str, list[str]], st: dict) -> Table:
     while len(right) < len(left):
         right.append(("", []))
 
-    COL_LABEL_W = 1.35 * inch
-    COL_VALUE_W = (CONTENT_W / 2) - COL_LABEL_W - 0.1 * inch
-    SPACER_W    = 0.2 * inch
+    COL_LABEL_W = 1.4 * inch
+    COL_VALUE_W = (CONTENT_W / 2) - COL_LABEL_W - 0.15 * inch
+    SPACER_W    = 0.3 * inch
 
     col_widths = [COL_LABEL_W, COL_VALUE_W, SPACER_W, COL_LABEL_W, COL_VALUE_W]
 
     rows = []
     style_cmds = [
-        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
-        ("TOPPADDING",    (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        # Outer border for each half
-        ("BOX",  (0, 0), (1, -1), 0.5, SKILL_BORDER),
-        ("BOX",  (3, 0), (4, -1), 0.5, SKILL_BORDER),
-        # Inner vertical grid within each half
-        ("LINEAFTER",  (0, 0), (0, -1), 0.5, SKILL_BORDER),
-        ("LINEAFTER",  (3, 0), (3, -1), 0.5, SKILL_BORDER),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        # No borders for clean look like the image
     ]
 
     for r_idx, (l_entry, r_entry) in enumerate(zip(left, right)):
         l_label, l_skills = l_entry
         r_label, r_skills = r_entry
 
+        # Join skills with comma and space (clean, scannable — no bullets)
         l_val = ", ".join(l_skills)
         r_val = ", ".join(r_skills)
 
-        row_bg = SKILL_ODD_ROW_BG if r_idx % 2 == 0 else colors.white
-        style_cmds += [
-            ("BACKGROUND", (0, r_idx), (1, r_idx), SKILL_LABEL_BG if r_idx % 2 == 0 else colors.HexColor("#EEF2FF")),
-            ("BACKGROUND", (3, r_idx), (4, r_idx), SKILL_LABEL_BG if r_idx % 2 == 0 else colors.HexColor("#EEF2FF")),
-        ]
-        # Label column always tinted
-        style_cmds += [
-            ("BACKGROUND", (0, r_idx), (0, r_idx), SKILL_LABEL_BG),
-            ("BACKGROUND", (3, r_idx), (3, r_idx), SKILL_LABEL_BG),
-        ]
-
         rows.append([
-            Paragraph(l_label, st["skill_label"]) if l_label else Paragraph("", st["skill_label"]),
+            Paragraph(_md_to_xml(l_label), st["skill_label"]) if l_label else Paragraph("", st["skill_label"]),
             Paragraph(_md_to_xml(l_val), st["skill_value"]),
             Paragraph("", st["normal"]),   # spacer column
-            Paragraph(r_label, st["skill_label"]) if r_label else Paragraph("", st["skill_label"]),
+            Paragraph(_md_to_xml(r_label), st["skill_label"]) if r_label else Paragraph("", st["skill_label"]),
             Paragraph(_md_to_xml(r_val), st["skill_value"]),
         ])
 
-    t = Table(rows, colWidths=col_widths, spaceBefore=4, spaceAfter=6)
+    t = Table(rows, colWidths=col_widths, spaceBefore=4, spaceAfter=10)
     t.setStyle(TableStyle(style_cmds))
     return t
 
@@ -335,6 +320,18 @@ def _parse_resume(md_text: str, st: dict) -> list:
                     if skill:
                         category_map[current_cat].append(skill)
                     i += 1
+
+                # Comma-separated continuation lines (common after **Category:** on its own line)
+                elif current_cat and cur and not cur.startswith("##") and not cur.startswith("###"):
+                    for s in re.split(r'[,;]', cur):
+                        s = s.strip()
+                        if s:
+                            category_map[current_cat].append(s)
+                    i += 1
+
+                elif not cur:
+                    i += 1
+                    continue
 
                 else:
                     break
@@ -606,6 +603,15 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
                     if skill:
                         category_map[current_cat].append(skill)
                     i += 1
+                elif current_cat and cur and not cur.startswith("##") and not cur.startswith("###"):
+                    for s in re.split(r'[,;]', cur):
+                        s = s.strip()
+                        if s:
+                            category_map[current_cat].append(s)
+                    i += 1
+                elif not cur:
+                    i += 1
+                    continue
                 else:
                     break
 
@@ -619,7 +625,7 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
             while len(right_cats) < len(left_cats):
                 right_cats.append(("", []))
 
-            # 5-column table: label | value | spacer | label | value
+            # 5-column table: label | value | spacer | label | value (clean, minimal — like print resume)
             tbl = doc.add_table(rows=len(left_cats), cols=5)
             tbl.style = "Table Grid"
             tbl.autofit = False
@@ -630,23 +636,14 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
 
             for ri, ((ll, ls), (rl, rs)) in enumerate(zip(left_cats, right_cats)):
                 cells = tbl.rows[ri].cells
-                bg = "E0E7FF" if ri % 2 == 0 else "EEF2FF"
-                # label cells slightly darker
-                for ci in (0, 3):
-                    _set_cell_bg(cells[ci], "DBEAFE")
-                for ci in (1, 4):
-                    _set_cell_bg(cells[ci], bg)
-                # spacer col white
-                _set_cell_bg(cells[2], "FFFFFF")
-                for ci in range(5):
+                for cell in cells:
                     for edge in ("top", "bottom", "left", "right"):
-                        border_color = "CBD5E1" if ci != 2 else "FFFFFF"
-                        _set_cell_border(cells[ci], **{edge: border_color})
+                        _set_cell_border(cell, **{edge: "FFFFFF"})
 
                 def _fill(cell, label: str, skills: list[str], is_label: bool) -> None:
                     p = cell.paragraphs[0]
-                    p.paragraph_format.space_before = Pt(3)
-                    p.paragraph_format.space_after  = Pt(3)
+                    p.paragraph_format.space_before = Pt(4)
+                    p.paragraph_format.space_after  = Pt(4)
                     _para_add_inline(p, label if is_label else ", ".join(skills),
                                      bold=is_label, size=9,
                                      color="0F172A" if is_label else "1E293B")
@@ -726,43 +723,50 @@ def create_cover_letter_docx(cover_letter_content: str) -> BytesIO:
 
 def create_cover_letter_pdf(cover_letter_content: str,
                              name: str = "") -> BytesIO:
-    """Convert plain-text / lightly-markdown cover letter into a PDF."""
+    """Convert plain-text / lightly-markdown cover letter into a single-page PDF."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
-        leftMargin=1.2 * inch, rightMargin=1.2 * inch,
-        topMargin=1.0 * inch,  bottomMargin=1.0 * inch,
+        leftMargin=1.0 * inch, rightMargin=1.0 * inch,  # Reduced margins for more space
+        topMargin=0.8 * inch,  bottomMargin=0.8 * inch,   # Reduced margins for more space
         title="Cover Letter",
     )
     base = getSampleStyleSheet()
 
     date_style = ParagraphStyle(
         "CLDate", parent=base["Normal"],
-        fontName="Helvetica", fontSize=11, leading=16,
-        textColor=LIGHT_GRAY, alignment=TA_RIGHT, spaceAfter=24,
+        fontName="Helvetica", fontSize=10, leading=14,  # Smaller font
+        textColor=LIGHT_GRAY, alignment=TA_RIGHT, spaceAfter=20,
     )
     body_style = ParagraphStyle(
         "CLBody", parent=base["Normal"],
-        fontName="Helvetica", fontSize=11, leading=18,
-        textColor=BODY_TEXT, spaceAfter=12,
+        fontName="Helvetica", fontSize=10, leading=15,  # Smaller font and tighter spacing
+        textColor=BODY_TEXT, spaceAfter=8,               # Reduced spacing
     )
     sig_style = ParagraphStyle(
         "CLSig", parent=base["Normal"],
-        fontName="Helvetica-Bold", fontSize=11, leading=18,
-        textColor=DARK_GRAY, spaceBefore=24, spaceAfter=4,
+        fontName="Helvetica-Bold", fontSize=10, leading=15,  # Smaller font
+        textColor=DARK_GRAY, spaceBefore=20, spaceAfter=4,   # Reduced spacing
     )
 
     story = [Paragraph(datetime.now().strftime("%B %d, %Y"), date_style)]
     in_sig = False
+    line_count = 0
+    max_lines = 50  # Approximate limit for single page
 
     for line in cover_letter_content.splitlines():
         s = line.strip()
         if not s:
-            story.append(Spacer(1, 0.1 * inch))
+            story.append(Spacer(1, 0.05 * inch))  # Smaller spacer
             continue
+        
+        line_count += 1
+        if line_count > max_lines:
+            break  # Stop to prevent overflow to second page
+            
         if any(s.lower().startswith(kw) for kw in
                ("sincerely", "best regards", "regards", "thank you", "yours truly")):
-            story.append(Spacer(1, 0.3 * inch))
+            story.append(Spacer(1, 0.2 * inch))  # Smaller spacer
             story.append(Paragraph(s, sig_style))
             in_sig = True
         elif in_sig:
