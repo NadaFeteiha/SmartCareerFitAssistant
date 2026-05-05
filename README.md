@@ -1,6 +1,6 @@
 # SmartCareerFit Assistant
 
-An AI-powered career tool that analyzes your resume against a job description, scores your fit, identifies skill gaps, and generates an ATS-optimized resume and personalized cover letter — all running locally with Ollama.
+An AI-powered career tool that analyzes your resume against a job description, scores your fit, identifies skill gaps, and generates an ATS-optimized resume and personalized cover letter — powered by the Claude API.
 
 ---
 
@@ -18,26 +18,27 @@ An AI-powered career tool that analyzes your resume against a job description, s
 
 ## AI Agents (7)
 
-All agents are [PydanticAI](https://docs.pydantic.dev/latest/concepts/pydantic_ai/) `Agent` instances backed by a local [Ollama](https://ollama.com) model. They are orchestrated in order by `src/services/pipeline.py`.
+All agents call the [Claude API](https://docs.anthropic.com) using **tool use** (MCP-style structured outputs) — no JSON parsing or repair needed. They are orchestrated in sequence by `backend/src/services/pipeline.py`.
 
-| # | Module | Agent (internal name) | Role |
-|---|--------|----------------------|------|
-| 1 | `extractor.py` | Resume extractor (`_resume_agent`) | Parses raw resume text into structured `ResumeData` (name, summary, skills, experience, education). |
-| 2 | `extractor.py` | Job extractor (`_job_agent`) | Parses the job posting into structured `JobRequirements` (title, keywords, responsibilities, required skills). |
-| 3 | `keyword_optimizer.py` | Keyword optimizer (`_keyword_agent`) | Pulls up to **10** high-value ATS keywords/phrases from the job description; merged with extractor keywords for resume optimization. |
-| 4 | `analyzer.py` | Fit scorer (`_scorer_agent`) | Produces `FitScore`: overall 0–100, sub-scores (skill match, experience alignment, keyword coverage), strengths, and explanation. |
-| 5 | `analyzer.py` | Gap analyzer (`_gap_agent`) | Produces `SkillGapReport`: missing hard/soft skills, structured missing requirements, and a prioritized learning roadmap. |
-| 6 | `generator.py` | Resume writer (`resume_writer`) | Rewrites the resume as ATS-oriented Markdown (no fabrication; aligns wording with the job and keywords). |
-| 7 | `generator.py` | Cover letter writer (`cover_letter_writer`) | Writes a tailored 3–4 paragraph cover letter for the target role and company. |
+| # | Module | Function | Role |
+|---|--------|----------|------|
+| 1 | `extractor.py` | `extract_resume` | Parses raw resume text into structured `ResumeData` (name, summary, skills, experience, education) |
+| 2 | `extractor.py` | `extract_job` | Parses the job posting into structured `JobRequirements` (title, keywords, responsibilities, required skills) |
+| 3 | `keyword_optimizer.py` | `extract_top_jd_keywords` | Pulls up to **10** high-value ATS keywords from the job description; merged with extractor keywords |
+| 4 | `analyzer.py` | `score_candidate` | Produces `FitScore`: overall 0–100, sub-scores (skill match, experience alignment, keyword coverage), strengths, and explanation |
+| 5 | `analyzer.py` | `analyze_gaps` | Produces `SkillGapReport`: missing hard/soft skills, structured missing requirements, and a prioritized learning roadmap |
+| 6 | `generator.py` | `write_resume` | Rewrites the resume as ATS-oriented Markdown (no fabrication; aligns wording with the job and keywords) |
+| 7 | `generator.py` | `write_cover_letter` | Writes a tailored 3–4 paragraph cover letter for the target role and company |
 
-**Flow:** extract resume → extract job → optimize keywords → (context) → score fit → analyze gaps → generate resume → generate cover letter.
+**Flow:** extract resume → extract job → optimize keywords → score fit → analyze gaps → generate resume → generate cover letter.
 
 ---
 
 ## Tech Stack
 
-- **UI**: [Streamlit](https://streamlit.io)
-- **AI Agents**: [PydanticAI](https://docs.pydantic.dev/latest/concepts/pydantic_ai/) with [Ollama](https://ollama.com) (default model: `llama3.2`)
+- **Frontend**: [React](https://react.dev) + [Vite](https://vitejs.dev) + [Tailwind CSS](https://tailwindcss.com)
+- **Backend**: [FastAPI](https://fastapi.tiangolo.com) + [Uvicorn](https://www.uvicorn.org)
+- **AI Agents**: [Claude API](https://docs.anthropic.com) (`claude-sonnet-4-6`) with tool use for structured outputs
 - **PDF Generation**: [ReportLab](https://www.reportlab.com)
 - **Database**: SQLite via a lightweight repository layer
 - **Validation**: [Pydantic v2](https://docs.pydantic.dev)
@@ -48,38 +49,43 @@ All agents are [PydanticAI](https://docs.pydantic.dev/latest/concepts/pydantic_a
 
 ```
 SmartCareerFitAssistant/
-├── app.py                    # Streamlit entry point
-├── main.py                   # CLI entry point
-├── src/
-│   ├── agents/
-│   │   ├── extractor.py       # 2 agents: resume + job parsers → structured schemas
-│   │   ├── keyword_optimizer.py  # 1 agent: top ATS keywords from the JD
-│   │   ├── analyzer.py        # 2 agents: fit scorer + skill gap / roadmap
-│   │   ├── generator.py       # 2 agents: optimized resume + cover letter
-│   │   └── utils.py           # Shared LLM output helpers
-│   ├── models/
-│   │   ├── resume.py         # ResumeData schema
-│   │   ├── job.py            # JobRequirements schema
-│   │   └── analysis.py       # FitScore, SkillGapReport, FullAnalysis
-│   ├── services/
-│   │   ├── pipeline.py       # Orchestrates all agents end-to-end
-│   │   └── pdf_parser.py     # Extracts text from uploaded PDFs
-│   ├── db/
-│   │   ├── database.py       # SQLite initialization
-│   │   └── repository.py     # Save/query analyses
-│   ├── utils/
-│   │   └── pdf.py            # Professional PDF rendering with ReportLab
-│   └── config.py             # Settings (model name, DB path, Ollama URL)
-├── ui/
-│   ├── results.py            # Results tabs renderer
-│   ├── sidebar.py            # Sidebar profile panel
-│   ├── components.py         # Score cards, skill chips, result boxes
-│   └── styles.py             # Global CSS injection
-├── tests/
-│   ├── test_database.py
-│   └── test_models.py
-└── data/
-    └── career_assistant.db   # SQLite database (auto-created)
+├── backend/
+│   ├── api.py                    # FastAPI app — all HTTP endpoints
+│   ├── pyproject.toml
+│   └── src/
+│       ├── agents/
+│       │   ├── extractor.py       # extract_resume + extract_job (tool use)
+│       │   ├── keyword_optimizer.py  # extract_top_jd_keywords (tool use)
+│       │   ├── analyzer.py        # score_candidate + analyze_gaps (tool use)
+│       │   └── generator.py       # write_resume + write_cover_letter
+│       ├── models/
+│       │   ├── resume.py          # ResumeData schema
+│       │   ├── job.py             # JobRequirements schema
+│       │   └── analysis.py        # FitScore, SkillGapReport, FullAnalysis
+│       ├── services/
+│       │   ├── pipeline.py        # Orchestrates all agents end-to-end
+│       │   └── pdf_parser.py      # Extracts text from uploaded PDFs
+│       ├── database/
+│       │   ├── database.py        # SQLite initialization
+│       │   └── repository.py      # Save/query analyses and user skills
+│       ├── utils/
+│       │   ├── pdf.py             # PDF rendering with ReportLab
+│       │   ├── resume_sections.py # Markdown skill injection & consolidation
+│       │   └── skill_validation.py  # Filter implausible gap skills
+│       └── config.py              # Settings (model, DB path, API key)
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── api/client.ts          # API client
+│   │   ├── components/            # Header, Hero, InputPanel, Sidebar
+│   │   │   └── results/           # FitAnalysis, OptimizedResume, CoverLetter, LearningRoadmap
+│   │   ├── types/index.ts
+│   │   └── styles/index.css
+│   ├── package.json
+│   └── vite.config.ts
+└── tests/
+    ├── test_database.py
+    └── test_models.py
 ```
 
 ---
@@ -87,21 +93,17 @@ SmartCareerFitAssistant/
 ## Prerequisites
 
 1. **Python 3.11+**
-2. **Ollama** running locally with a compatible model pulled:
-
-```bash
-ollama pull llama3.2
-ollama serve
-```
+2. **Node.js 18+**
+3. An **Anthropic API key** — get one at [console.anthropic.com](https://console.anthropic.com)
 
 ---
 
 ## Setup
 
+### Backend
+
 ```bash
-# Clone the repo
-git clone <repo-url>
-cd SmartCareerFitAssistant
+cd backend
 
 # Create and activate a virtual environment
 python -m venv .venv
@@ -109,28 +111,36 @@ source .venv/bin/activate      # macOS/Linux
 # .venv\Scripts\activate       # Windows
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
+
+# Add your API key
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
 ```
 
-### Environment Variables (optional)
+### Frontend
 
-Create a `.env` file to override defaults:
-
-```env
-OLLAMA_MODEL=llama3.2
-OLLAMA_BASE_URL=http://localhost:11434/v1
-DB_PATH=data/career_assistant.db
+```bash
+cd frontend
+npm install
 ```
 
 ---
 
 ## Running the App
 
+Start both servers (in separate terminals):
+
 ```bash
-streamlit run app.py
+# Terminal 1 — backend
+cd backend
+uvicorn api:app --reload --port 8000
+
+# Terminal 2 — frontend
+cd frontend
+npm run dev
 ```
 
-Open `http://localhost:8501` in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
@@ -138,14 +148,12 @@ Open `http://localhost:8501` in your browser.
 
 1. **Upload your resume** — paste text or upload a PDF.
 2. **Paste the job description** — copy it from any job posting.
-3. **Click "Analyze & Generate All Outputs"** — the pipeline runs in ~2–5 minutes on local hardware.
+3. **Click Analyze** — the pipeline runs all 7 agents in sequence.
 4. **Review your results** across four tabs:
    - **Fit Analysis** — score breakdown and skill chips
    - **Optimized Resume** — ATS-ready Markdown + download PDF
    - **Cover Letter** — tailored letter + download PDF
    - **Learning Roadmap** — prioritized skill gaps with learning suggestions
-
-> Results persist in the session — clicking "Download PDF" does **not** reset the page.
 
 ---
 
@@ -155,32 +163,47 @@ Open `http://localhost:8501` in your browser.
 Resume Text + Job Description
         │
         ▼
-  [Extractor Agents]  (resume + job)
+  [Extractor Agents]  — Claude tool use
   ResumeData + JobRequirements
         │
         ▼
-  [Keyword Optimizer Agent]
+  [Keyword Optimizer]  — Claude tool use
   Merged keyword list for ATS targeting
         │
         ▼
-  [Analyzer Agents]  (scorer + gap analyzer)
+  [Analyzer Agents]  — Claude tool use
   FitScore + SkillGapReport
         │
         ▼
-  [Generator Agents]  (resume writer + cover letter writer)
+  [Generator Agents]  — Claude text generation
   Optimized Resume + Cover Letter
         │
         ▼
-  [SQLite Repository]       [Streamlit UI + PDF Export]
+  [SQLite Repository]       [FastAPI + React UI + PDF Export]
 ```
 
-Seven PydanticAI `Agent` instances (see **AI Agents** above) share the same Ollama-backed model. The pipeline runs them in sequence via `src/services/pipeline.py` (async internally; Streamlit uses a sync wrapper).
+Agents use Claude's **tool use** feature (`tool_choice: required`) to guarantee structured outputs — no regex, no JSON repair, no retries for malformed output.
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/upload-pdf` | Extract text from a resume PDF |
+| `POST` | `/api/analyze` | Run the full 7-agent pipeline |
+| `GET` | `/api/analyses` | Fetch all saved analyses |
+| `POST` | `/api/download/resume` | Generate and download resume PDF |
+| `POST` | `/api/download/cover-letter` | Generate and download cover letter PDF |
+| `POST` | `/api/user/skills` | Persist a confirmed skill for a user |
+| `GET` | `/api/user/skills/{user_name}` | Retrieve saved skills for a user |
 
 ---
 
 ## Running Tests
 
 ```bash
+cd backend
 pytest tests/
 ```
 
@@ -190,7 +213,7 @@ pytest tests/
 
 | Setting | Default | Description |
 |---|---|---|
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
-| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
+| `ANTHROPIC_API_KEY` | _(required)_ | Claude API key |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Claude model to use |
 | `DB_PATH` | `data/career_assistant.db` | SQLite file path |
-| `DEBUG` | `true` | Enable debug logging |
+| `DEBUG` | `false` | Enable debug logging |
