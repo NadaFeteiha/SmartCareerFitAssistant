@@ -2,7 +2,7 @@ import json
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
-from src.agents.utils import unwrap_llm_json
+from src.agents.utils import repair_truncated_json, unwrap_llm_json
 from src.models.resume import ResumeData
 from src.models.job import JobRequirements
 from src.config import completion_settings, get_model, settings
@@ -72,7 +72,7 @@ _resume_agent = Agent(
     _default_model(),
     output_type=str,
     retries=3,
-    model_settings=completion_settings(4000),
+    model_settings=completion_settings(8000),
     system_prompt="""You are a resume parser. Extract structured data from the resume text.
 
 Return ONLY a JSON object with exactly these fields:
@@ -109,6 +109,8 @@ async def extract_resume(text: str) -> ResumeData:
 
         # Repair common JSON errors like trailing commas
         clean = re.sub(r',\s*([\]}])', r'\1', clean)
+        # Close unbalanced brackets if the response was truncated by max_tokens
+        clean = repair_truncated_json(clean)
 
         try:
             return ResumeData.model_validate_json(clean)
@@ -125,7 +127,7 @@ _job_agent = Agent(
     _default_model(),
     output_type=str,
     retries=3,
-    model_settings=completion_settings(4000),
+    model_settings=completion_settings(8000),
     system_prompt="""You are a job description parser. Extract structured data.
 
 Return ONLY a JSON object with exactly these fields:
@@ -154,6 +156,8 @@ async def extract_job(text: str) -> JobRequirements:
 
         # Basic raw string trailing comma repair before sanitize
         raw_repaired = re.sub(r',\s*([\]}])', r'\1', raw)
+        # Close unbalanced brackets if the response was truncated by max_tokens
+        raw_repaired = repair_truncated_json(raw_repaired)
         clean = _sanitize_job_requirements(raw_repaired)
 
         try:

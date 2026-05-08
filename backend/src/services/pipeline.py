@@ -5,13 +5,17 @@ from src.agents.extractor import extract_job, extract_resume
 from src.agents.generator import cover_letter_writer, resume_writer
 from src.agents.keyword_optimizer import extract_top_jd_keywords
 from src.config import get_model
-from src.database.repository import get_user_skills, save_analysis
+from src.database.repository import get_user_confirmed_skills, save_analysis
 from src.models.analysis import FitScore, FullAnalysis, SkillGapReport
 from src.models.resume import Skill
 from src.utils.resume_sections import consolidate_small_skill_categories, inject_skill_into_markdown
 
 
-async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
+async def run_pipeline(
+    resume_text: str,
+    job_text: str,
+    user_id: int | None = None,
+) -> tuple[FullAnalysis, AnalysisContext]:
     """
     One pipeline, four outputs.
     Step 1: Extract structured data from resume and job description.
@@ -23,9 +27,8 @@ async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, A
     print("Step 1/3: Extracting structured data...")
     resume_data = await extract_resume(resume_text)
     
-    user_name = resume_data.name
-    if user_name:
-        saved_skills = get_user_skills(user_name)
+    if user_id is not None:
+        saved_skills = get_user_confirmed_skills(user_id)
         existing_skills = {s.name.lower() for s in resume_data.skills}
         for sk in saved_skills:
             if sk.lower() not in existing_skills:
@@ -70,15 +73,19 @@ async def run_pipeline(resume_text: str, job_text: str) -> tuple[FullAnalysis, A
         cover_letter=cover_letter,
     )
 
-    save_analysis(result, job_title=job_data.title, company=job_data.company)
+    save_analysis(result, job_title=job_data.title, company=job_data.company, user_id=user_id)
     print("Done! Results saved to database.")
 
     return result, ctx
 
 
-def run_pipeline_sync(resume_text: str, job_text: str) -> tuple[FullAnalysis, AnalysisContext]:
+def run_pipeline_sync(
+    resume_text: str,
+    job_text: str,
+    user_id: int | None = None,
+) -> tuple[FullAnalysis, AnalysisContext]:
     """Synchronous wrapper for use in Streamlit."""
-    return asyncio.run(run_pipeline(resume_text, job_text))
+    return asyncio.run(run_pipeline(resume_text, job_text, user_id=user_id))
 
 
 async def recalculate_fit_and_gaps(ctx: AnalysisContext) -> tuple[FitScore, SkillGapReport]:

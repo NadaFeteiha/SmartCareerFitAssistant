@@ -10,8 +10,11 @@ An AI-powered career tool that analyzes your resume against a job description, s
 |---|---|
 | **Fit Scoring** | Overall score (0–100) with sub-scores for skill match, experience alignment, and keyword coverage |
 | **Skill Gap Analysis** | Identifies missing hard and soft skills with a prioritized learning roadmap |
+| **Skill Confirmation Assistant** | Asks the user to confirm missing skills, saves answers, auto-recalculates fit score, and reuses answers in future analyses |
 | **Resume Optimizer** | Rewrites your resume in ATS-friendly Markdown, tailored to the target job — no fabrication |
 | **Cover Letter Generator** | Produces a concise, tailored 3–4 paragraph cover letter |
+| **GitHub Project Import** | Imports public GitHub projects, prioritizes projects matching the current job description, and adds them to resume Projects |
+| **Profile Memory** | Saves contact fields (phone, LinkedIn, GitHub) so they are auto-filled on future sessions and still editable |
 | **PDF Export** | Downloads a professionally formatted PDF for both the resume and cover letter |
 
 ---
@@ -146,14 +149,18 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Usage
 
-1. **Upload your resume** — paste text or upload a PDF.
-2. **Paste the job description** — copy it from any job posting.
-3. **Click Analyze** — the pipeline runs all 7 agents in sequence.
-4. **Review your results** across four tabs:
+1. **Sign up or sign in** — create an account (or use the *Forgot password* tab to reset).
+2. **Upload your resume once** — use **Upload Resume** (paste text or PDF). It's saved to your account; use **Replace Resume** or **Remove** any time.
+3. **Paste the job description** — copy it from any job posting.
+4. **(Optional) Import GitHub projects** — enter your GitHub username and import public projects. The app prioritizes repos that match the current job description and adds them under **Projects**.
+5. **Click Analyze** — the pipeline runs all 7 agents against your saved resume.
+6. **Confirm missing skills in chat** — when prompted, answer whether you have each skill. Answers are saved, added to your profile context, and the fit score refreshes automatically.
+7. **Review your results** across four tabs:
    - **Fit Analysis** — score breakdown and skill chips
    - **Optimized Resume** — ATS-ready Markdown + download PDF
    - **Cover Letter** — tailored letter + download PDF
    - **Learning Roadmap** — prioritized skill gaps with learning suggestions
+8. **Sign out** from the header when you're done.
 
 ---
 
@@ -188,15 +195,32 @@ Agents use Claude's **tool use** feature (`tool_choice: required`) to guarantee 
 
 ## API Endpoints
 
+Endpoints marked **🔒** require an `Authorization: Bearer <token>` header (token returned by `/api/auth/login` or `/api/auth/register`).
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/upload-pdf` | Extract text from a resume PDF |
-| `POST` | `/api/analyze` | Run the full 7-agent pipeline |
+| `POST` | `/api/auth/register` | Create an account → returns JWT token + user |
+| `POST` | `/api/auth/login` | Sign in → returns JWT token + user |
+| `GET` | `/api/auth/me` | 🔒 Current user |
+| `POST` | `/api/auth/forgot` | Issue a password reset token (returned in dev) |
+| `POST` | `/api/auth/reset` | Reset password with a token + new password |
+| `GET` | `/api/resume` | 🔒 Get the user's saved resume |
+| `PUT` | `/api/resume` | 🔒 Save/replace the user's resume |
+| `DELETE` | `/api/resume` | 🔒 Remove the user's saved resume |
+| `POST` | `/api/upload-pdf` | 🔒 Extract resume text from a PDF and persist it |
+| `POST` | `/api/analyze` | 🔒 Run the full 7-agent pipeline against the saved resume |
 | `GET` | `/api/analyses` | Fetch all saved analyses |
 | `POST` | `/api/download/resume` | Generate and download resume PDF |
 | `POST` | `/api/download/cover-letter` | Generate and download cover letter PDF |
 | `POST` | `/api/user/skills` | Persist a confirmed skill for a user |
 | `GET` | `/api/user/skills/{user_name}` | Retrieve saved skills for a user |
+| `GET` | `/api/user/skill-confirmations` | 🔒 Get saved skill confirmation decisions for current user |
+| `POST` | `/api/user/skill-confirmations` | 🔒 Save one skill decision (`has_skill` true/false) |
+| `GET` | `/api/user/profile` | 🔒 Get saved profile contact fields (phone/linkedin/github) |
+| `PUT` | `/api/user/profile` | 🔒 Save profile contact fields (phone/linkedin/github) |
+| `POST` | `/api/github/import` | 🔒 Import public GitHub repos (optionally filtered by current job text) into resume Projects |
+
+The `JWT_SECRET` env var sets the JWT signing secret (defaults to a dev placeholder — set it in production).
 
 ---
 

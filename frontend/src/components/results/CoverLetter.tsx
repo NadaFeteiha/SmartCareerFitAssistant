@@ -26,7 +26,7 @@ export default function CoverLetter({ text }: Props) {
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
         >
           {downloading ? (
             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -43,7 +43,7 @@ export default function CoverLetter({ text }: Props) {
         value={draft}
         onChange={e => setDraft(e.target.value)}
         rows={22}
-        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-sm text-slate-300 leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none shadow-soft"
       />
     </div>
   )
