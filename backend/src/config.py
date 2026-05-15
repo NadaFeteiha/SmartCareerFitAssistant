@@ -54,7 +54,14 @@ def get_active_provider() -> str:
 
 
 def get_model():
-    """Return the appropriate pydantic-ai model based on current runtime config."""
+    """Return the appropriate pydantic-ai model based on current runtime config.
+
+    For Anthropic, attaches model-level settings that enable prompt caching on
+    the (static) system instructions — system prompts are reused on every call,
+    so caching them yields ~90% cost reduction and 5x lower latency on the
+    cached prefix. User messages (resume / job text) change per request and
+    are intentionally NOT cached.
+    """
     provider = get_active_provider()
 
     if provider == "anthropic":
@@ -68,13 +75,14 @@ def get_model():
         return AnthropicModel(
             model_name,
             provider=AnthropicProvider(api_key=api_key),
+            settings={"anthropic_cache_instructions": True},
         )
     else:  # ollama
-        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
 
         model_name = _runtime_model_name or settings.ollama_model
-        return OpenAIModel(
+        return OpenAIChatModel(
             model_name,
             provider=OpenAIProvider(
                 base_url=settings.ollama_base_url,

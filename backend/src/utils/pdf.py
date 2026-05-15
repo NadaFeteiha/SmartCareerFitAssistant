@@ -5,6 +5,7 @@ from datetime import datetime
 import re
 
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -120,9 +121,9 @@ def _md_to_xml(text: str) -> str:
 def _exp_row(role: str, company: str, date: str, location: str, st: dict) -> Table:
     """
     Single experience header row:
-      LEFT  — Role (bold) · Company
-      RIGHT — Date  (light gray, right-aligned)
-              Location (italic, smaller, right-aligned)  [optional]
+        LEFT  — Role (bold) · Company
+        RIGHT — Date  (light gray, right-aligned)
+                Location (italic, smaller, right-aligned)  [optional]
     """
     left_xml = f"<b>{role}</b>"
     if company:
@@ -136,8 +137,7 @@ def _exp_row(role: str, company: str, date: str, location: str, st: dict) -> Tab
     right_xml = "<br/>".join(right_lines)
 
     t = Table(
-        [[Paragraph(left_xml, st["exp_left"]),
-          Paragraph(right_xml, st["exp_right"])]],
+        [[Paragraph(left_xml, st["exp_left"]),Paragraph(right_xml, st["exp_right"])]],
         colWidths=[CONTENT_W * 0.65, CONTENT_W * 0.35],
         spaceBefore=9, spaceAfter=2,
     )
@@ -211,14 +211,14 @@ def _parse_resume(md_text: str, st: dict) -> list:
     Parses a markdown resume into ReportLab flowables.
 
     Header block (before first ##):
-      # Candidate Name
-      Job Title / Tagline          ← NEW: rendered in blue under name
-      email | phone | location | linkedin
+        # Candidate Name
+        Job Title / Tagline          ← NEW: rendered in blue under name
+        email | phone | location | linkedin
 
     Sections:
-      ## SECTION NAME
-      ### Role | Company | Date | Location
-      - bullet
+        ## SECTION NAME
+        ### Role | Company | Date | Location
+        - bullet
       **Category:** skill1, skill2   ← collected into 2-column skills table
     """
     story = []
@@ -364,8 +364,7 @@ def _parse_resume(md_text: str, st: dict) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
-def create_resume_pdf(markdown_content: str,
-                      filename_title: str = "Resume") -> BytesIO:
+def create_resume_pdf(markdown_content: str,filename_title: str = "Resume") -> BytesIO:
     """
     Convert a markdown resume into a professional PDF.
 
@@ -458,9 +457,7 @@ def _apply_bold_italic(run, text: str) -> None:
         run.text = text
 
 
-def _para_add_inline(para, text: str, bold: bool = False,
-                     italic: bool = False, size: int = 10,
-                     color: str | None = None) -> None:
+def _para_add_inline(para, text: str, bold: bool = False,italic: bool = False, size: int = 10,color: str | None = None) -> None:
     """Add a run to *para* with optional formatting."""
     run = para.add_run(text)
     run.bold   = bold
@@ -645,8 +642,8 @@ def create_resume_docx(markdown_content: str) -> BytesIO:
                     p.paragraph_format.space_before = Pt(4)
                     p.paragraph_format.space_after  = Pt(4)
                     _para_add_inline(p, label if is_label else ", ".join(skills),
-                                     bold=is_label, size=9,
-                                     color="0F172A" if is_label else "1E293B")
+                                    bold=is_label, size=9,
+                                    color="0F172A" if is_label else "1E293B")
 
                 _fill(cells[0], ll, ls, True)
                 _fill(cells[1], ll, ls, False)
@@ -700,7 +697,7 @@ def create_cover_letter_docx(cover_letter_content: str) -> BytesIO:
             doc.add_paragraph().paragraph_format.space_after = Pt(6)
             continue
         is_sig = any(s.lower().startswith(kw) for kw in
-                     ("sincerely", "best regards", "regards", "thank you", "yours truly"))
+                    ("sincerely", "best regards", "regards", "thank you", "yours truly"))
         if is_sig:
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(20)
@@ -721,8 +718,7 @@ def create_cover_letter_docx(cover_letter_content: str) -> BytesIO:
     return buffer
 
 
-def create_cover_letter_pdf(cover_letter_content: str,
-                             name: str = "") -> BytesIO:
+def create_cover_letter_pdf(cover_letter_content: str, name: str = "") -> BytesIO:
     """Convert plain-text / lightly-markdown cover letter into a single-page PDF."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -733,6 +729,11 @@ def create_cover_letter_pdf(cover_letter_content: str,
     )
     base = getSampleStyleSheet()
 
+    name_style = ParagraphStyle(
+        "CLName", parent=base["Normal"],
+        fontName="Helvetica-Bold", fontSize=12, leading=14,
+        textColor=DARK_GRAY, spaceAfter=6,
+    )
     date_style = ParagraphStyle(
         "CLDate", parent=base["Normal"],
         fontName="Helvetica", fontSize=10, leading=14,  # Smaller font
@@ -749,7 +750,10 @@ def create_cover_letter_pdf(cover_letter_content: str,
         textColor=DARK_GRAY, spaceBefore=20, spaceAfter=4,   # Reduced spacing
     )
 
-    story = [Paragraph(datetime.now().strftime("%B %d, %Y"), date_style)]
+    story = []
+    if name:
+        story.append(Paragraph(name, name_style))
+    story.append(Paragraph(datetime.now().strftime("%B %d, %Y"), date_style))
     in_sig = False
     line_count = 0
     max_lines = 50  # Approximate limit for single page
@@ -764,8 +768,7 @@ def create_cover_letter_pdf(cover_letter_content: str,
         if line_count > max_lines:
             break  # Stop to prevent overflow to second page
             
-        if any(s.lower().startswith(kw) for kw in
-               ("sincerely", "best regards", "regards", "thank you", "yours truly")):
+        if any(s.lower().startswith(kw) for kw in("sincerely", "best regards", "regards", "thank you", "yours truly")):
             story.append(Spacer(1, 0.2 * inch))  # Smaller spacer
             story.append(Paragraph(s, sig_style))
             in_sig = True

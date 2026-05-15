@@ -2,7 +2,7 @@
 
 import uuid
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelSettings
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -49,7 +49,7 @@ _assist_agent = Agent(
     _default_model(),
     output_type=str,
     retries=2,
-    model_settings=completion_settings(2000),
+    model_settings=ModelSettings(**completion_settings(4000)),
     system_prompt=(
         "You rewrite short pieces of resume text. "
         "Return ONLY the rewritten text in plain Markdown — no preamble, no quotes, "

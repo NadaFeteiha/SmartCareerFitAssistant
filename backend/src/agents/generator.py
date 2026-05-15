@@ -1,6 +1,8 @@
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
+
 from src.agents.analyzer import AnalysisContext
 from src.config import completion_settings, settings
 
@@ -20,7 +22,7 @@ resume_writer = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=2,
-    model_settings=completion_settings(8000),
+    model_settings=ModelSettings(**completion_settings(4000)),
     system_prompt="""
     You are an expert resume writer.
         Rewrite the candidate's resume to be ATS-optimized for the target job.
@@ -34,21 +36,21 @@ resume_writer = Agent(
         6. Naturally integrate the employer's top ATS keywords (provided below) where they align with real experience — do not invent experience to place a keyword
         7. Use strong action verbs and quantify results where possible
         8. Return the resume in structured Markdown format. Use exactly the following markdown headers:
-           - `# [Candidate Name]` at the very top
-           - Contact info separated by `|` right below the name using their actual details from the original resume (e.g., `123-456-7890 | email@example.com | linkedin.com/in/user`)
-           - `## [Section Name]` for main sections
-           - `### [Job Title] | [Company] | [Dates] | [Location]` for experience entries
-           - `### [Degree] | [University] | [Dates] | [Location]` for education entries
-           - `- [Bullet point]` for bullet points
+            - `# [Candidate Name]` at the very top
+            - Contact info separated by `|` right below the name using their actual details from the original resume (e.g., `123-456-7890 | email@example.com | linkedin.com/in/user`)
+            - `## [Section Name]` for main sections
+            - `### [Job Title] | [Company] | [Dates] | [Location]` for experience entries
+            - `### [Degree] | [University] | [Dates] | [Location]` for education entries
+            - `- [Bullet point]` for bullet points
         9. SUMMARY (required): Immediately after the contact line, include `## SUMMARY` as the first body section (before EXPERIENCE). Write 2–4 tight sentences that:
-           - Align the candidate's real strengths and years/domain with the target role and company context from the job description
-           - Naturally weave in a few of the top ATS keywords where they reflect truth from the resume (do not claim skills or experience that are not in the original resume)
-           - Use confident, third-person or implied subject professional tone (no "I" if it sounds awkward; "Experienced …" / "Results-driven …" is fine)
-           - Do not repeat the job title verbatim as the only content; add concrete hooks from their background
+            - Align the candidate's real strengths and years/domain with the target role and company context from the job description
+            - Naturally weave in a few of the top ATS keywords where they reflect truth from the resume (do not claim skills or experience that are not in the original resume)
+            - Use confident, third-person or implied subject professional tone (no "I" if it sounds awkward; "Experienced …" / "Results-driven …" is fine)
+            - Do not repeat the job title verbatim as the only content; add concrete hooks from their background
         10. Section order must be: `## SUMMARY`, then `## EXPERIENCE`, then `## EDUCATION`, then `## SKILLS` (add other sections like PROJECTS only if present in the source resume).
         11. For the SKILLS section, ALWAYS group skills into logical sub-categories instead of writing one long list. Prefer this format (category on its own line; skills follow on the same line or the next line, comma-separated):
-           - `**[Category Label]:**` then skills such as `Python, Java, Kotlin` (e.g., `**Languages & Frameworks:**` then `Python, Java, TypeScript`)
-           - Use clear labels similar to: Languages & Frameworks, Backend & Databases, AI/ML, Cloud & DevOps, Tools & Practices — adapted to what the candidate actually has.
+            - `**[Category Label]:**` then skills such as `Python, Java, Kotlin` (e.g., `**Languages & Frameworks:**` then `Python, Java, TypeScript`)
+            - Use clear labels similar to: Languages & Frameworks, Backend & Databases, AI/ML, Cloud & DevOps, Tools & Practices — adapted to what the candidate actually has.
         12. ALWAYS include an EDUCATION section with the candidate's actual education from their original resume.
         13. Include EXPERIENCE, EDUCATION, and SKILLS at minimum (plus SUMMARY as above).
 
@@ -86,15 +88,17 @@ cover_letter_writer = Agent(
     output_type=str,
     deps_type=AnalysisContext,
     retries=2,
-    model_settings=completion_settings(4000),
-    system_prompt="""You are a professional cover letter writer.
-Write a tailored, concise cover letter (3-4 paragraphs).
+    model_settings=ModelSettings(**completion_settings(4000)),
+    system_prompt="""
+        You are a professional cover letter writer.
+        Write a tailored, concise cover letter (3-4 paragraphs).
 
-Rules:
-- Reference the candidate's strongest matching qualifications
-- Do not use generic openers like "I am writing to apply"
-- Address it to the hiring team at the specific company
-- Return the cover letter in professional plaintext format. You may use `**bold**` or `*italic*` for emphasis if needed.""",
+        Rules:
+        - Reference the candidate's strongest matching qualifications
+        - Do not use generic openers like "I am writing to apply"
+        - Address it to the hiring team at the specific company
+        - Return the cover letter in professional plaintext format. You may use `**bold**` or `*italic*` for emphasis if needed.
+        """,
 )
 
 @cover_letter_writer.system_prompt

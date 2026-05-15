@@ -1,22 +1,24 @@
 import re
+from typing import TypeVar
+
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def unwrap_llm_json(text: str) -> str:
-    """Strip markdown code fences and leading/trailing whitespace from LLM output."""
+    """Strip markdown code fences and surrounding whitespace from LLM output."""
     text = text.strip()
-    # Remove ```json ... ``` or ``` ... ``` fences
     match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if match:
-        return match.group(1).strip()
-    return text
+    return match.group(1).strip() if match else text
 
 
-def repair_truncated_json(text: str) -> str:
-    """Best-effort repair for LLM JSON truncated by a max_tokens cap.
+def _repair_truncated_json(text: str) -> str:
+    """Best-effort repair for LLM JSON truncated by max_tokens.
 
-    Closes any unbalanced strings, objects, and arrays so the result parses.
-    String-aware: does not count braces that occur inside string literals.
-    Also strips trailing commas immediately before the appended closers.
+    Closes unbalanced strings, objects, and arrays so the result parses.
+    String-aware: ignores brackets inside string literals. Also strips trailing
+    commas immediately before any appended closers.
     """
     if not text:
         return text
@@ -50,3 +52,20 @@ def repair_truncated_json(text: str) -> str:
         for opener in reversed(stack):
             repaired += "}" if opener == "{" else "]"
     return repaired
+
+
+def parse_model(raw: str, model_cls: type[T]) -> T:
+    """Parse LLM text output into a Pydantic model.
+
+    Steps:
+        1. Strip ```json ... ``` code fences.
+        2. Close any unbalanced brackets/strings (truncation by max_tokens).
+        3. Drop trailing commas — small models love them.
+        4. Validate. Model-level validators on the target class coerce common
+        small-model quirks (bare strings instead of objects, None instead of [],
+        etc.) without needing per-call sanitization functions.
+    """
+    text = unwrap_llm_json(raw)
+    text = re.sub(r",\s*([\]}])", r"\1", text)
+    text = _repair_truncated_json(text)
+    return model_cls.model_validate_json(text)
